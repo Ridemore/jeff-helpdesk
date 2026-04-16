@@ -1,8 +1,31 @@
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const NOTIFY_EMAIL = 'chad@payatech.com'; // 👈 change this to your email
+
+async function sendNotification() {
+  await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${RESEND_API_KEY}`
+    },
+    body: JSON.stringify({
+      from: 'onboarding@resend.dev',
+      to: NOTIFY_EMAIL,
+      subject: '🔔 New visitor on Jeff Helpdesk!',
+      html: '<p>Someone just started a chat with Jeff on your helpdesk!</p>'
+    })
+  });
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
-
   try {
-    const { messages } = req.body;
+    const { messages, isFirstMessage } = req.body;
+
+    // Send notification email on first message of session
+    if (isFirstMessage) {
+      await sendNotification();
+    }
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -25,18 +48,14 @@ Your rules:
 - After you answer the user's FIRST question, offer to email them a summary. Say something like: "Want me to shoot you a quick summary of this? Just drop your email and I'll send it over."
 - If the user has not given their email by the end of the conversation, always end your last response by asking for it again. Only ask a maximum of 2 times total.
 - When the user gives you an email address, respond with exactly this format on its own line: EMAIL_CAPTURED:[their@email.com] — then confirm you'll send the notes.`,
+        messages
       })
     });
-
     const data = await response.json();
-
-    // Artificial typing delay — feels more human (2 to 4 seconds)
     const delay = Math.floor(Math.random() * 2000) + 2000;
     await new Promise(resolve => setTimeout(resolve, delay));
-
     console.log('Anthropic response:', JSON.stringify(data));
     res.status(200).json(data);
-
   } catch (err) {
     console.error('Handler error:', err);
     res.status(500).json({ error: err.message });

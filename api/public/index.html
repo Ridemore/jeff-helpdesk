@@ -83,6 +83,7 @@
   const chipsEl = document.getElementById('chips');
   let history = [];
   let loading = false;
+  let emailCaptured = false;
 
   function addMessage(role, text) {
     const isBot = role === 'bot';
@@ -113,4 +114,43 @@
     if (!text || loading) return;
     chipsEl.style.display = 'none';
     addMessage('user', text);
-    history.push({ role: 'user', conten
+    history.push({ role: 'user', content: text });
+    inputEl.value = ''; inputEl.style.height = 'auto';
+    loading = true; sendBtn.disabled = true;
+    showTyping();
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: history, isFirstMessage: history.length === 1, emailCaptured })
+      });
+      const data = await res.json();
+
+      // Strip EMAIL_CAPTURED tag before showing to user
+      const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
+      const reply = rawReply.replace(/EMAIL_CAPTURED:\[.+?\]/g, '').trim();
+
+      // Check if email was captured in this response
+      const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[(.+?)\]/);
+      if (emailMatch) emailCaptured = true;
+
+      history.push({ role: 'assistant', content: reply });
+      removeTyping();
+      addMessage('bot', reply);
+    } catch(e) {
+      removeTyping();
+      addMessage('bot', "Hmm, something went wrong. Give it another shot or call us directly.");
+    }
+    loading = false; sendBtn.disabled = false;
+  }
+
+  inputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + 'px';
+  });
+</script>
+</body>
+</html>

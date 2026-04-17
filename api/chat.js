@@ -1,5 +1,6 @@
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const NOTIFY_EMAIL = 'chad@payatech.com'; // 👈 change this to your email
+const NOTIFY_EMAIL = 'chad@payatech.com';
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbxlybkSiKt9ou1_nXiUrslDKfHzhxIzpsGFB3ryr9R3uunOvLcKLS5PGkHI9scZrMQsEw/exec';
 
 async function sendNotification() {
   await fetch('https://api.resend.com/emails', {
@@ -17,12 +18,19 @@ async function sendNotification() {
   });
 }
 
+async function logToSheet(email, summary) {
+  await fetch(SHEET_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, summary })
+  });
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   try {
     const { messages, isFirstMessage } = req.body;
 
-    // Send notification email on first message of session
     if (isFirstMessage) {
       await sendNotification();
     }
@@ -47,11 +55,23 @@ Your rules:
 - You are Jeff. Stay in character always.
 - After your FIRST answer, casually slip in: "Oh and real quick — want me to shoot you a summary of this when we're done? What's your email?" Then keep helping them regardless of whether they give it or not.
 - If they never gave their email and the conversation is wrapping up, ask one more time naturally like: "Hey before you go — want those notes? Just drop your email and I'll send them over."
-- When the user gives you an email address, respond with exactly this format on its own line: EMAIL_CAPTURED:[their@email.com] — then keep the conversation going naturally.
+- When the user gives you an email address, respond with exactly this format on its own line: EMAIL_CAPTURED:[their@email.com] — then keep the conversation going naturally.`,
         messages
       })
     });
+
     const data = await response.json();
+
+    const reply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
+
+    // Check if Jeff captured an email
+    const emailMatch = reply.match(/EMAIL_CAPTURED:\[(.+?)\]/);
+    if (emailMatch) {
+      const capturedEmail = emailMatch[1];
+      const summary = messages.map(m => `${m.role}: ${m.content}`).join('\n');
+      await logToSheet(capturedEmail, summary);
+    }
+
     const delay = Math.floor(Math.random() * 2000) + 2000;
     await new Promise(resolve => setTimeout(resolve, delay));
     console.log('Anthropic response:', JSON.stringify(data));

@@ -33,7 +33,15 @@ async function generateSummary(messages) {
       messages: [
         {
           role: 'user',
-          content: `Summarize this help desk conversation in 2-3 sentences. Focus on the issue, what was tried, and the recommended next step:\n\n${messages.map(m => `${m.role}: ${m.content}`).join('\n')}`
+          content: `Summarize this help desk conversation in exactly 3 bullet points using this format:
+🔧 What the issue was
+✅ What we tried or fixed
+📞 What the next step is if the problem continues
+
+No dashes, no asterisks, no extra text. Just the 3 lines. Keep it short and friendly.
+
+Conversation:
+${messages.map(m => `${m.role}: ${m.content}`).join('\n')}`
         }
       ]
     })
@@ -42,45 +50,11 @@ async function generateSummary(messages) {
   return data.content?.[0]?.text || 'No summary available';
 }
 
-async function logToSheet(email, summary) {
+async function logToSheet(email, summary, sendEmail) {
   await fetch(SHEET_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, summary })
-  });
-}
-
-async function sendNotesEmail(email, summary) {
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${RESEND_API_KEY}`
-    },
-    body: JSON.stringify({
-      from: 'onboarding@resend.dev',
-      to: email,
-      subject: 'Your notes from PAYATECH Help Desk',
-      html: `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; background: #f9f9f9;">
-          <div style="background: #ffffff; border-radius: 16px; padding: 32px; box-shadow: 0 2px 12px rgba(0,0,0,0.06);">
-            <div style="text-align: center; margin-bottom: 24px;">
-              <img src="https://jeff-helpdesk.vercel.app/payatech-logo.png" alt="PAYATECH" style="height: 40px;" />
-            </div>
-            <h2 style="color: #000; font-size: 18px; margin: 0 0 8px;">Hey there!</h2>
-            <p style="color: #555; font-size: 14px; line-height: 1.6; margin: 0 0 24px;">Here's a quick summary of what we covered in your help desk session today.</p>
-            <div style="background: #f2f2f7; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
-              <p style="color: #000; font-size: 14px; line-height: 1.7; margin: 0;">${summary}</p>
-            </div>
-            <div style="border-top: 1px solid #e0e0e0; padding-top: 20px; text-align: center;">
-              <p style="color: #888; font-size: 13px; margin: 0 0 8px;">Need to talk to a real person?</p>
-              <a href="tel:+18058007168" style="color: #0071e3; font-size: 16px; font-weight: 600; text-decoration: none;">${SUPPORT_PHONE}</a>
-              <p style="color: #aaa; font-size: 11px; margin: 16px 0 0;">PAYATECH Help Desk • payatech.com</p>
-            </div>
-          </div>
-        </div>
-      `
-    })
+    body: JSON.stringify({ email, summary, sendEmail })
   });
 }
 
@@ -90,7 +64,7 @@ export default async function handler(req, res) {
     const { messages, isFirstMessage, emailCaptured } = req.body;
 
     if (isFirstMessage) {
-      sendNotification(); // fire and forget — don't await
+      sendNotification();
     }
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -123,24 +97,21 @@ Your rules:
     const data = await response.json();
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
 
-    // EMAIL_CAPTURED — fire summary/email in background, don't await
+    // EMAIL_CAPTURED — send notes + log to sheet
     const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
     if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
       const capturedEmail = emailMatch[1];
       generateSummary(messages).then(summary => {
-        Promise.all([
-          logToSheet(capturedEmail, summary),
-          sendNotesEmail(capturedEmail, summary)
-        ]);
+        logToSheet(capturedEmail, summary, true);
       });
     }
 
-    // EMAIL_CAPTURED_NOEMAIL — log to sheet only in background
+    // EMAIL_CAPTURED_NOEMAIL — log to sheet only, no notes email
     const noEmailMatch = rawReply.match(/EMAIL_CAPTURED_NOEMAIL:\[?([^\]\n]+)\]?/);
     if (noEmailMatch) {
       const capturedEmail = noEmailMatch[1];
       generateSummary(messages).then(summary => {
-        logToSheet(capturedEmail, summary);
+        logToSheet(capturedEmail, summary, false);
       });
     }
 

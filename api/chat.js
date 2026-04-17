@@ -18,6 +18,29 @@ async function sendNotification() {
   });
 }
 
+async function generateSummary(messages) {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 100,
+      messages: [
+        {
+          role: 'user',
+          content: `Summarize this help desk conversation in 1-2 sentences. Focus on the issue and outcome:\n\n${messages.map(m => `${m.role}: ${m.content}`).join('\n')}`
+        }
+      ]
+    })
+  });
+  const data = await response.json();
+  return data.content?.[0]?.text || 'No summary available';
+}
+
 async function logToSheet(email, summary) {
   await fetch(SHEET_URL, {
     method: 'POST',
@@ -64,11 +87,11 @@ Your rules:
     const data = await response.json();
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
 
-    // Check if Jeff captured an email
+    // Check if Jeff captured an email — generate clean summary and log it
     const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
     if (emailMatch) {
       const capturedEmail = emailMatch[1];
-      const summary = messages.map(m => `${m.role}: ${m.content}`).join('\n');
+      const summary = await generateSummary(messages);
       await logToSheet(capturedEmail, summary);
     }
 

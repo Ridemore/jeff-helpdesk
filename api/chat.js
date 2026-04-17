@@ -65,21 +65,23 @@ Your rules:
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
 
     // Check if Jeff captured an email
-    const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[(.+?)\]/);
+    const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
     if (emailMatch) {
       const capturedEmail = emailMatch[1];
       const summary = messages.map(m => `${m.role}: ${m.content}`).join('\n');
       await logToSheet(capturedEmail, summary);
     }
 
+    // Strip EMAIL_CAPTURED tag before sending to frontend
+    if (data.content?.[0]?.text) {
+      data.content[0].text = data.content[0].text.replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '').trim();
+    }
+
     const delay = Math.floor(Math.random() * 2000) + 2000;
     await new Promise(resolve => setTimeout(resolve, delay));
     console.log('Anthropic response:', JSON.stringify(data));
-    // Strip EMAIL_CAPTURED tag from the reply before sending to frontend
-if (data.content?.[0]?.text) {
-  data.content[0].text = data.content[0].text.replace(/EMAIL_CAPTURED:[\[]?.+?[\]]?\n?/g, '').trim();
-}
-res.status(200).json(data);
+    res.status(200).json(data);
+
   } catch (err) {
     console.error('Handler error:', err);
     res.status(500).json({ error: err.message });

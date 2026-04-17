@@ -75,7 +75,11 @@ Your rules:
     const delay = Math.floor(Math.random() * 2000) + 2000;
     await new Promise(resolve => setTimeout(resolve, delay));
     console.log('Anthropic response:', JSON.stringify(data));
-    res.status(200).json(data);
+    // Strip EMAIL_CAPTURED tag from the reply before sending to frontend
+if (data.content?.[0]?.text) {
+  data.content[0].text = data.content[0].text.replace(/EMAIL_CAPTURED:\[.+?\]/g, '').trim();
+}
+res.status(200).json(data);
   } catch (err) {
     console.error('Handler error:', err);
     res.status(500).json({ error: err.message });

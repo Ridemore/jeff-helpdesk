@@ -77,7 +77,7 @@ Your rules:
     console.log('Anthropic response:', JSON.stringify(data));
     // Strip EMAIL_CAPTURED tag from the reply before sending to frontend
 if (data.content?.[0]?.text) {
-  data.content[0].text = data.content[0].text.replace(/EMAIL_CAPTURED:\[.+?\]/g, '').trim();
+  data.content[0].text = data.content[0].text.replace(/EMAIL_CAPTURED:[\[]?.+?[\]]?/g, '').trim();
 }
 res.status(200).json(data);
   } catch (err) {

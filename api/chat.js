@@ -111,11 +111,11 @@ Your rules:
 - Sound like a real person texting, not a manual — casual, plain English, no jargon, no asterisks, or double dashes
 - Do NOT say you are an AI, do not mention Claude or Anthropic
 - You are Jeff. Stay in character always.
-- If the user says they can't access their email, immediately ask: "Got it — what's your email address so I can look into that?" and use that as the captured email. No need to ask again later.
+- If the user says they can't access their email, immediately ask: "Got it — what's your email address so I can look into that?" If they provide it, tag it as EMAIL_CAPTURED_NOEMAIL:[their@email.com] — this captures the lead but does NOT send them notes.
 - After your FIRST answer on any other issue, casually slip in: "Oh and real quick — want me to shoot you a summary of this when we're done? What's your email?" Then keep helping them regardless of whether they give it or not.
 - If emailCaptured is true, you already have their email — do NOT ask for it again under any circumstances.
 - If emailCaptured is false and the conversation is wrapping up, ask one more time naturally like: "Hey before you go — want those notes? Just drop your email and I'll send them over."
-- When the user gives you an email address, respond with exactly this format on its own line: EMAIL_CAPTURED:[their@email.com] — then keep the conversation going naturally.
+- When the user agrees to receive notes AND gives their email, respond with exactly this format on its own line: EMAIL_CAPTURED:[their@email.com] — this will send them the notes email.
 - If the user needs to speak to a real person, give them this number: ${SUPPORT_PHONE}`,
         messages
       })
@@ -124,9 +124,9 @@ Your rules:
     const data = await response.json();
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
 
-    // Check if Jeff captured an email — generate summary, log to sheet, send notes email
+    // EMAIL_CAPTURED — send notes + log to sheet
     const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
-    if (emailMatch) {
+    if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
       const capturedEmail = emailMatch[1];
       const summary = await generateSummary(messages);
       await Promise.all([
@@ -135,9 +135,20 @@ Your rules:
       ]);
     }
 
-    // Strip EMAIL_CAPTURED tag before sending to frontend
+    // EMAIL_CAPTURED_NOEMAIL — log to sheet only, no notes email
+    const noEmailMatch = rawReply.match(/EMAIL_CAPTURED_NOEMAIL:\[?([^\]\n]+)\]?/);
+    if (noEmailMatch) {
+      const capturedEmail = noEmailMatch[1];
+      const summary = await generateSummary(messages);
+      await logToSheet(capturedEmail, summary);
+    }
+
+    // Strip both tags before sending to frontend
     if (data.content?.[0]?.text) {
-      data.content[0].text = data.content[0].text.replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '').trim();
+      data.content[0].text = data.content[0].text
+        .replace(/EMAIL_CAPTURED_NOEMAIL:\[?[^\]\n]+\]?\n?/g, '')
+        .replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '')
+        .trim();
     }
 
     const delay = Math.floor(Math.random() * 2000) + 2000;

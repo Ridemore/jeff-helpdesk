@@ -90,7 +90,7 @@ export default async function handler(req, res) {
     const { messages, isFirstMessage, emailCaptured } = req.body;
 
     if (isFirstMessage) {
-      await sendNotification();
+      sendNotification(); // fire and forget — don't await
     }
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -113,8 +113,7 @@ Your rules:
 - You are Jeff. Stay in character always.
 - If the user says they can't access their email, immediately ask: "Got it — what's your email address so I can look into that?" If they provide it, tag it as EMAIL_CAPTURED_NOEMAIL:[their@email.com] — this captures the lead but does NOT send them notes.
 - After your FIRST answer on any other issue, casually slip in: "Oh and real quick — want me to shoot you a summary of this when we're done? What's your email?" Then keep helping them regardless of whether they give it or not.
-- If emailCaptured is true, you already have their email — do NOT ask for it again under any circumstances.
-- If emailCaptured is false and the conversation is wrapping up, ask one more time naturally like: "Hey before you go — want those notes? Just drop your email and I'll send them over."
+- ${emailCaptured ? 'IMPORTANT: You already have this user\'s email. Do NOT ask for it again. Do not mention notes or email at all.' : 'If the conversation is wrapping up and you still do not have their email, ask one more time: "Hey before you go — want those notes? Just drop your email and I\'ll send them over."'}
 - When the user agrees to receive notes AND gives their email, respond with exactly this format on its own line: EMAIL_CAPTURED:[their@email.com] — this will send them the notes email.
 - If the user needs to speak to a real person, give them this number: ${SUPPORT_PHONE}`,
         messages
@@ -124,23 +123,25 @@ Your rules:
     const data = await response.json();
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
 
-    // EMAIL_CAPTURED — send notes + log to sheet
+    // EMAIL_CAPTURED — fire summary/email in background, don't await
     const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
     if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
       const capturedEmail = emailMatch[1];
-      const summary = await generateSummary(messages);
-      await Promise.all([
-        logToSheet(capturedEmail, summary),
-        sendNotesEmail(capturedEmail, summary)
-      ]);
+      generateSummary(messages).then(summary => {
+        Promise.all([
+          logToSheet(capturedEmail, summary),
+          sendNotesEmail(capturedEmail, summary)
+        ]);
+      });
     }
 
-    // EMAIL_CAPTURED_NOEMAIL — log to sheet only, no notes email
+    // EMAIL_CAPTURED_NOEMAIL — log to sheet only in background
     const noEmailMatch = rawReply.match(/EMAIL_CAPTURED_NOEMAIL:\[?([^\]\n]+)\]?/);
     if (noEmailMatch) {
       const capturedEmail = noEmailMatch[1];
-      const summary = await generateSummary(messages);
-      await logToSheet(capturedEmail, summary);
+      generateSummary(messages).then(summary => {
+        logToSheet(capturedEmail, summary);
+      });
     }
 
     // Strip both tags before sending to frontend

@@ -52,7 +52,7 @@ async function logToSheet(email, summary) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   try {
-    const { messages, isFirstMessage } = req.body;
+    const { messages, isFirstMessage, emailCaptured } = req.body;
 
     if (isFirstMessage) {
       await sendNotification();
@@ -78,9 +78,11 @@ Your rules:
 - You are Jeff. Stay in character always.
 - If the user says they can't access their email, immediately ask: "Got it — what's your email address so I can look into that?" and use that as the captured email. No need to ask again later.
 - After your FIRST answer on any other issue, casually slip in: "Oh and real quick — want me to shoot you a summary of this when we're done? What's your email?" Then keep helping them regardless of whether they give it or not.
-- If they never gave their email and the conversation is wrapping up, ask one more time naturally like: "Hey before you go — want those notes? Just drop your email and I'll send them over."
+- If emailCaptured is true, you already have their email — do NOT ask for it again under any circumstances.
+- If emailCaptured is false and the conversation is wrapping up, ask one more time naturally like: "Hey before you go — want those notes? Just drop your email and I'll send them over."
 - When the user gives you an email address, respond with exactly this format on its own line: EMAIL_CAPTURED:[their@email.com] — then keep the conversation going naturally.`,
-        messages
+        messages,
+        ...(emailCaptured ? { system_append: 'Email already captured. Do not ask for email again.' } : {})
       })
     });
 

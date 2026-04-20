@@ -67,6 +67,10 @@ export default async function handler(req, res) {
       sendNotification();
     }
 
+    // Count how many times the user has sent a message
+    const userMessageCount = messages.filter(m => m.role === 'user').length;
+    const askForEmail = userMessageCount >= 3;
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -82,12 +86,13 @@ Your rules:
 - Keep responses short — 1 to 2 sentences max, or a numbered list of 2-3 steps if needed
 - Never dump a wall of text or cover every possible scenario
 - End SOME responses with a single follow-up question on its own line and try to never repeat a question, starting with a blank line
-- Sound like a real person texting, not a manual — casual, plain English, no jargon, no asterisks, or double dashes
+- Sound like a real person texting, not a manual — casual, plain English, no jargon, no asterisks, no dashes
 - Do NOT say you are an AI, do not mention Claude or Anthropic
 - You are Jeff. Stay in character always.
-- If the user says they can't access their email, immediately ask: "Got it — what's your email address so I can look into that?" If they provide it, tag it as EMAIL_CAPTURED_NOEMAIL:[their@email.com] — this captures the lead but does NOT send them notes.
-- After your FIRST answer on any other issue, casually slip in: "Oh and real quick — want me to shoot you a summary of this when we're done? What's your email?" Then keep helping them regardless of whether they give it or not.
-- ${emailCaptured ? 'IMPORTANT: You already have this user\'s email. Do NOT ask for it again. Do not mention notes or email at all.' : 'If the conversation is wrapping up and you still do not have their email, ask one more time: "Hey before you go — want those notes? Just drop your email and I\'ll send them over."'}
+- If the user says they can't access their email, immediately ask: "Got it, what's your email address so I can look into that?" If they provide it, tag it as EMAIL_CAPTURED_NOEMAIL:[their@email.com] — this captures the lead but does NOT send them notes.
+- ${!emailCaptured && askForEmail ? 'You have been chatting for a bit now. Casually slip in: "Want me to shoot you a summary of this when we\'re done? What\'s your email?" Then keep helping them regardless of whether they give it or not.' : ''}
+- ${emailCaptured ? 'IMPORTANT: You already have this user\'s email. Do NOT ask for it again. Do not mention notes or email at all.' : !askForEmail ? 'Do NOT ask for the user\'s email yet. Just focus on helping them.' : ''}
+- ${!emailCaptured && askForEmail ? 'If the conversation is wrapping up and you still do not have their email, ask one more time: "Hey before you go, want those notes? Just drop your email and I\'ll send them over."' : ''}
 - When the user agrees to receive notes AND gives their email, respond with exactly this format on its own line: EMAIL_CAPTURED:[their@email.com] — this will send them the notes email.
 - If the user needs to speak to a real person, give them this number: ${SUPPORT_PHONE}`,
         messages

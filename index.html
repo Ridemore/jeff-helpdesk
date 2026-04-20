@@ -66,6 +66,7 @@
     <div class="chip" onclick="sendChip(this)">Computer is slow</div>
     <div class="chip" onclick="sendChip(this)">Can't access email</div>
     <div class="chip" onclick="sendChip(this)">Reset my password</div>
+    <div class="chip" onclick="sendChip(this)">Check if email is fake</div>
   </div>
   <div id="input-row">
     <textarea id="user-input" placeholder="How can I be of service..." rows="1"></textarea>
@@ -123,7 +124,7 @@
         body: JSON.stringify({ messages: history })
       });
       const data = await res.json();
-const reply = (data.content?.[0]?.text || "Sorry, something went wrong. Try again!").replace(/EMAIL_CAPTURED:[\[]?.+?[\]]?\n?/g, '').trim();
+      const reply = (data.content?.[0]?.text || "Sorry, something went wrong. Try again!").replace(/EMAIL_CAPTURED:[\[]?.+?[\]]?\n?/g, '').trim();
       history.push({ role: 'assistant', content: reply });
       removeTyping(); addMessage('bot', reply);
     } catch(e) {

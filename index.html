@@ -72,7 +72,7 @@
     <div class="chip" onclick="checkPhishing()">Check if email is fake</div>
   </div>
   <div id="input-row">
-    <textarea id="user-input" placeholder="What's Happening?..." rows="1"></textarea>
+    <textarea id="user-input" placeholder="How can I be of service..." rows="1"></textarea>
     <button id="send-btn" onclick="sendMessage()">
       <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
     </button>
@@ -163,6 +163,10 @@
 
   inputEl.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+
+  inputEl.addEventListener('focus', () => {
+    chipsEl.style.display = 'none';
   });
 </script>
 </body>

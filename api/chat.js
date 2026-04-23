@@ -3,6 +3,16 @@ const NOTIFY_EMAIL = 'chad@payatech.com';
 const SUPPORT_PHONE = '(805) 800-7168';
 const SHEET_URL = 'https://script.google.com/macros/s/AKfycbxlybkSiKt9ou1_nXiUrslDKfHzhxIzpsGFB3ryr9R3uunOvLcKLS5PGkHI9scZrMQsEw/exec';
 
+const EMAIL_ASKS = [
+  "Before I let you go, want me to shoot you a quick recap of what we did today? Just drop your email and I'll send it over.",
+  "Hey, want a copy of this sent to you? That way you have it if the issue ever comes back. What's your email?",
+  "I can send you a quick summary of everything we covered today. Want that? Just give me your email.",
+  "Last thing — want me to email you these steps so you don't have to remember all this? What's a good email for you?",
+  "One more thing before you go — I can send you a little recap of this whole chat. Want me to? Just drop your email.",
+  "Want a cheat sheet of everything we just did? I can email it to you real quick. What's your email?",
+  "Hey just so you have it for next time, want me to send you a summary of this? What email should I use?"
+];
+
 async function sendNotification() {
   await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -67,9 +77,10 @@ export default async function handler(req, res) {
       sendNotification();
     }
 
-    // Count how many times the user has sent a message
     const userMessageCount = messages.filter(m => m.role === 'user').length;
-    const askForEmail = userMessageCount >= 3;
+    const askForEmail = !emailCaptured && userMessageCount >= 3;
+
+    const randomAsk = EMAIL_ASKS[Math.floor(Math.random() * EMAIL_ASKS.length)];
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -85,14 +96,15 @@ export default async function handler(req, res) {
 Your rules:
 - Keep responses short — 1 to 2 sentences max, or a numbered list of 2-3 steps if needed
 - Never dump a wall of text or cover every possible scenario
-- End SOME responses with a single follow-up question on its own line and try to never repeat a question, starting with a blank line
+- End SOME responses with a single follow-up question on its own line, starting with a blank line
 - Sound like a real person texting, not a manual — casual, plain English, no jargon, no asterisks, no dashes
 - Do NOT say you are an AI, do not mention Claude or Anthropic
 - You are Jeff. Stay in character always.
-- If the user says they can't access their email, immediately ask: "Got it, what's your email address so I can look into that?" If they provide it, tag it as EMAIL_CAPTURED_NOEMAIL:[their@email.com] — this captures the lead but does NOT send them notes.
-- ${!emailCaptured && askForEmail ? 'Casually slip in once: "Want me to shoot you a summary of this when we\'re done? Just drop your email and I\'ll send it over." Only ask once and keep helping them regardless.' : ''}
-
-- When the user agrees to receive notes AND gives their email, respond with exactly this format on its own line: EMAIL_CAPTURED:[their@email.com] — this will send them the notes email.
+- If the user says they can't access their email, immediately ask: "Got it, what's your email address so I can look into that?" If they provide it, tag it as EMAIL_CAPTURED_NOEMAIL:[their@email.com]
+- ${askForEmail ? `Once the issue seems resolved, work this into your reply naturally and only once: "${randomAsk}"` : ''}
+- ${emailCaptured ? 'IMPORTANT: You already have this user\'s email. Do NOT ask for it again under any circumstances.' : ''}
+- ${!askForEmail && !emailCaptured ? 'Do NOT ask for the user\'s email yet. Just focus on helping them.' : ''}
+- When the user gives their email for notes, respond with exactly this on its own line: EMAIL_CAPTURED:[their@email.com]
 - If the user needs to speak to a real person, give them this number: ${SUPPORT_PHONE}`,
         messages
       })
@@ -101,7 +113,6 @@ Your rules:
     const data = await response.json();
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
 
-    // EMAIL_CAPTURED — send notes + log to sheet
     const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
     if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
       const capturedEmail = emailMatch[1];
@@ -110,7 +121,6 @@ Your rules:
       });
     }
 
-    // EMAIL_CAPTURED_NOEMAIL — log to sheet only, no notes email
     const noEmailMatch = rawReply.match(/EMAIL_CAPTURED_NOEMAIL:\[?([^\]\n]+)\]?/);
     if (noEmailMatch) {
       const capturedEmail = noEmailMatch[1];
@@ -119,7 +129,6 @@ Your rules:
       });
     }
 
-    // Strip both tags before sending to frontend
     if (data.content?.[0]?.text) {
       data.content[0].text = data.content[0].text
         .replace(/EMAIL_CAPTURED_NOEMAIL:\[?[^\]\n]+\]?\n?/g, '')

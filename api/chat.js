@@ -1,7 +1,7 @@
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const NOTIFY_EMAIL = 'chad@payatech.com';
 const SUPPORT_PHONE = '(805) 800-7168';
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycbxlybkSiKt9ou1_nXiUrslDKfHzhxIzpsGFB3ryr9R3uunOvLcKLS5PGkHI9scZrMQsEw/exec';
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbzqvLrlPRVmCt-3PCXE-MbWfVtcR3PXdh6rN2amjt8iErZZ8N9s3Z3zyGc_PnL57GPB-Q/exec';
 
 const EMAIL_ASKS = [
   "Before I let you go, want me to shoot you a quick recap of what we did today? Just drop your email and I'll send it over.",

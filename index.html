@@ -100,7 +100,6 @@
   inputEl.addEventListener('focus', () => {
     chipsEl.style.display = 'none';
     setTimeout(() => {
-      inputEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }, 300);
   });

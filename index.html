@@ -4,14 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
   <title>PAYATECH Help Desk</title>
-  <link rel="manifest" href="/manifest.json">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="Jeff Helpdesk">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; background: #f2f2f7; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; min-height: -webkit-fill-available; }
-    #app { display: flex; flex-direction: column; height: 100vh; height: -webkit-fill-available; width: 100%; max-width: 480px; background: #ffffff; border-radius: 18px; overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,0.12); }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; background: #f2f2f7; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+    #app { display: flex; flex-direction: column; height: 100vh; width: 100%; max-width: 480px; background: #ffffff; border-radius: 18px; overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,0.12); }
     @media (min-height: 680px) { #app { height: 620px; } }
     #header { padding: 6px 12px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.95); border-bottom: 0.5px solid #e0e0e0; flex-shrink: 0; }
     .avatar-wrap { position: relative; flex-shrink: 0; }
@@ -38,14 +34,14 @@
     #chips { padding: 10px 16px 8px; display: flex; flex-wrap: wrap; gap: 6px; background: #ffffff; border-top: 0.5px solid #e0e0e0; flex-shrink: 0; }
     .chip { font-size: 12px; padding: 5px 12px; border-radius: 20px; border: 0.5px solid #0071e3; color: #0071e3; background: transparent; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; }
     .chip:hover { background: rgba(0,113,227,0.07); }
-    #input-row { padding: 8px 14px 8px; display: flex; gap: 8px; align-items: center; background: #ffffff; border-top: 0.5px solid #e0e0e0; flex-shrink: 0; width: 100%; position: sticky; bottom: 0; }
+    #input-row { padding: 10px 14px 12px; display: flex; gap: 8px; align-items: center; background: #ffffff; border-top: 0.5px solid #e0e0e0; flex-shrink: 0; width: 100%; }
     #user-input { flex: 1; min-width: 0; resize: none; border: 0.5px solid #ccc; border-radius: 22px; padding: 9px 16px; font-size: 14px; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; line-height: 1.4; background: #f2f2f7; color: #000; outline: none; height: 38px; overflow-y: auto; }
     #user-input:focus { border-color: #0071e3; }
     #send-btn { width: 38px; height: 38px; min-width: 38px; border-radius: 50%; background: #0071e3; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     #send-btn:hover { background: #005bbf; }
     #send-btn svg { width: 15px; height: 15px; fill: white; margin-left: 1px; }
     #send-btn:disabled { background: #ccc; }
-    .disclaimer { font-size: 10px; color: #888; text-align: center; padding: 4px 16px 6px; background: #ffffff; flex-shrink: 0; display: flex; align-items: center; justify-content: center; gap: 5px; }
+    .disclaimer { font-size: 10px; color: #888; text-align: center; padding: 5px 16px 8px; background: #ffffff; flex-shrink: 0; display: flex; align-items: center; justify-content: center; gap: 5px; }
   </style>
 </head>
 <body>
@@ -76,7 +72,7 @@
     <div class="chip" onclick="checkPhishing()">Check if email is fake</div>
   </div>
   <div id="input-row">
-    <textarea id="user-input" placeholder="How can I be of service..." rows="1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+    <textarea id="user-input" placeholder="How can I be of service..." rows="1"></textarea>
     <button id="send-btn" onclick="sendMessage()">
       <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
     </button>
@@ -95,22 +91,11 @@
   let loading = false;
   let emailCaptured = false;
 
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js');
-  }
-
-  function setVh() {
-    document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
-  }
-  setVh();
-  window.addEventListener('resize', setVh);
-
   inputEl.addEventListener('focus', () => {
     chipsEl.style.display = 'none';
     setTimeout(() => {
-      window.scrollTo(0, document.body.scrollHeight);
       messagesEl.scrollTop = messagesEl.scrollHeight;
-    }, 500);
+    }, 300);
   });
 
   function addMessage(role, text) {

@@ -133,6 +133,7 @@
   async function sendMessage() {
     const text = inputEl.value.trim();
     if (!text || loading) return;
+    chipsEl.style.display = 'none';
     addMessage('user', text);
     history.push({ role: 'user', content: text });
     inputEl.value = '';

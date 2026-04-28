@@ -6,8 +6,8 @@
   <title>PAYATECH Help Desk</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; background: #f2f2f7; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-    #app { display: flex; flex-direction: column; height: 100vh; height: calc(var(--vh, 1vh) * 100); width: 100%; max-width: 480px; background: #ffffff; border-radius: 18px; overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,0.12); }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; background: #f2f2f7; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; min-height: -webkit-fill-available; }
+    #app { display: flex; flex-direction: column; height: 100vh; height: -webkit-fill-available; width: 100%; max-width: 480px; background: #ffffff; border-radius: 18px; overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,0.12); }
     @media (min-height: 680px) { #app { height: 620px; } }
     #header { padding: 6px 12px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.95); border-bottom: 0.5px solid #e0e0e0; flex-shrink: 0; }
     .avatar-wrap { position: relative; flex-shrink: 0; }

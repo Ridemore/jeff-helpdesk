@@ -3,16 +3,6 @@ const NOTIFY_EMAIL = 'chad@payatech.com';
 const SUPPORT_PHONE = '(805) 800-7168';
 const SHEET_URL = 'https://script.google.com/macros/s/AKfycbwRYH907MF6o4nsl3Bt-FenhwvNhhzmiUWzjepBiXxOxnst_gJqFy8rbrQ9d-9wvu-L8w/exec';
 
-const EMAIL_ASKS = [
-  "Before I let you go, want me to shoot you a quick recap of what we did today? Just drop your email and I'll send it over.",
-  "Want a copy of this sent to you? That way you have it if the issue ever comes back. What's your email?",
-  "I can send you a quick summary of everything we covered today. Want that? Just give me your email.",
-  "Last thing — want me to email you these steps so you don't have to remember all this? What's a good email for you?",
-  "One more thing before you go — I can send you a little recap of this whole chat. Want me to? Just drop your email.",
-  "Want a cheat sheet of everything we just did? I can email it to you real quick. What's your email?",
-  "Just so you have it for next time, want me to send you a summary of this? What email should I use?"
-];
-
 async function sendNotification() {
   await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -39,16 +29,16 @@ async function generateSummary(messages) {
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 200,
+      max_tokens: 150,
       messages: [
         {
           role: 'user',
-          content: `Summarize this help desk conversation in exactly 3 bullet points using this format:
-🔧 What the issue was
-✅ What we tried or fixed
-📞 What the next step is if the problem continues
+          content: `Summarize this help desk conversation in exactly 3 very short bullet points, one sentence each max:
+🔧 Issue: [one line]
+✅ Fixed: [one line]
+📞 Next step: [one line]
 
-No dashes, no asterisks, no extra text. Just the 3 lines. Keep it short and friendly.
+No dashes, no asterisks, no extra text. Just the 3 lines. Be brief.
 
 Conversation:
 ${messages.map(m => `${m.role}: ${m.content}`).join('\n')}`
@@ -79,8 +69,7 @@ export default async function handler(req, res) {
 
     const userMessageCount = messages.filter(m => m.role === 'user').length;
     const isFirstUserMessage = userMessageCount === 1;
-    const askForEmail = !emailCaptured && userMessageCount >= 3;
-    const randomAsk = EMAIL_ASKS[Math.floor(Math.random() * EMAIL_ASKS.length)];
+    const askForEmail = false;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -99,12 +88,10 @@ Your rules:
 - Sound like a real person texting, not a manual — casual, plain English, no jargon, no asterisks, no dashes
 - Do NOT say you are an AI, do not mention Claude or Anthropic
 - You are Jeff. Stay in character always.
-- ${isFirstUserMessage ? 'The user\'s first message is their email address. You MUST immediately tag it on its own line exactly like this: EMAIL_CAPTURED:[their@email.com] — then thank them briefly and ask what the issue is. Example response: "EMAIL_CAPTURED:[chad@payatech.com]\nAwesome, got you logged in! What can I help you with today?"' : ''}
+- Do NOT ask for the user's email at any point — it was already collected at the start.
+- ${isFirstUserMessage ? 'The user\'s first message is their email address. You MUST immediately tag it on its own line exactly like this: EMAIL_CAPTURED:[their@email.com] — then thank them briefly and ask what the issue is. Example: "EMAIL_CAPTURED:[chad@payatech.com]\nAwesome, got you logged in! What can I help you with today?"' : ''}
 - ${emailCaptured ? 'IMPORTANT: You already have this user\'s email. Do NOT ask for it again under any circumstances. If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}
-- ${!emailCaptured && !isFirstUserMessage ? 'If the user says they cannot access their email, immediately ask: "Got it, what\'s your email address so I can look into that?" If they provide it, tag it as EMAIL_CAPTURED_NOEMAIL:[their@email.com]' : ''}
-- ${askForEmail ? `Once the issue seems resolved, work this into your reply naturally and only once: "${randomAsk}"` : ''}
-- ${!askForEmail && !emailCaptured && !isFirstUserMessage ? 'Do NOT ask for the user\'s email yet. Just focus on helping them.' : ''}
-- When the user gives their email for notes later in the conversation, tag it on its own line: EMAIL_CAPTURED:[their@email.com]
+- ${!emailCaptured && !isFirstUserMessage ? 'If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}
 - If the user needs to speak to a real person, give them this number: ${SUPPORT_PHONE}`,
         messages
       })

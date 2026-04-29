@@ -51,11 +51,15 @@ ${messages.map(m => `${m.role}: ${m.content}`).join('\n')}`
 }
 
 async function logToSheet(email, summary, sendEmail, ticketNumber) {
-  await fetch(SHEET_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, summary, sendEmail, ticketNumber })
-  });
+  try {
+    await fetch(SHEET_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, summary, sendEmail, ticketNumber })
+    });
+  } catch (err) {
+    console.error('Sheet log error:', err);
+  }
 }
 
 export default async function handler(req, res) {
@@ -67,14 +71,14 @@ export default async function handler(req, res) {
       sendNotification();
     }
 
-    // Update sheet only — no email
+    // Silent sheet update — no email
     if (updateSheet && capturedEmail) {
       const summary = await generateSummary(messages);
       await logToSheet(capturedEmail, summary, false, ticketNumber);
       return res.status(200).json({ updated: true });
     }
 
-    // Final update — update sheet AND send email
+    // Final update — send email
     if (sendFinal && capturedEmail) {
       const summary = await generateSummary(messages);
       await logToSheet(capturedEmail, summary, true, ticketNumber);
@@ -113,6 +117,7 @@ Your rules:
     const data = await response.json();
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
 
+    // First message — capture email and log to sheet
     const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
     if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
       const newEmail = emailMatch[1];
@@ -122,7 +127,7 @@ Your rules:
         String(now.getDate()).padStart(2, '0') +
         String(now.getHours()).padStart(2, '0') +
         String(now.getMinutes()).padStart(2, '0');
-      logToSheet(newEmail, 'Session in progress', false, newTicket);
+      await logToSheet(newEmail, 'Session in progress', false, newTicket);
     }
 
     if (data.content?.[0]?.text) {

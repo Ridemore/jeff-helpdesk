@@ -50,25 +50,33 @@ ${messages.map(m => `${m.role}: ${m.content}`).join('\n')}`
   return data.content?.[0]?.text || 'No summary available';
 }
 
-async function logToSheet(email, summary, ticketNumber) {
+async function logToSheet(email, summary, sendEmail, ticketNumber) {
   await fetch(SHEET_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, summary, sendEmail: true, ticketNumber })
+    body: JSON.stringify({ email, summary, sendEmail, ticketNumber })
   });
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   try {
-    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber } = req.body;
+    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber, sendFinal } = req.body;
 
     if (isFirstMessage) {
       sendNotification();
     }
 
+    // Final call from inactivity timer — generate summary and send email
+    if (sendFinal && capturedEmail) {
+      const summary = await generateSummary(messages);
+      await logToSheet(capturedEmail, summary, true, ticketNumber);
+      return res.status(200).json({ sent: true });
+    }
+
     const userMessageCount = messages.filter(m => m.role === 'user').length;
     const isFirstUserMessage = userMessageCount === 1;
+    const hasRealConversation = userMessageCount >= 3;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -91,7 +99,7 @@ Your rules:
 - ${isFirstUserMessage ? 'The user\'s first message is their email address. You MUST immediately tag it on its own line exactly like this: EMAIL_CAPTURED:[their@email.com] — then thank them briefly and ask what the issue is. Example: "EMAIL_CAPTURED:[chad@payatech.com]\nAwesome, got your ticket open! What can I help you with today?"' : ''}
 - ${emailCaptured ? 'IMPORTANT: You already have this user\'s email. Do NOT ask for it again under any circumstances. If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}
 - ${!emailCaptured && !isFirstUserMessage ? 'If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}
-- When you say anything like "you're all set", "glad that worked", "happy to help", "let me know if anything else comes up", or any closing phrase, you MUST add CONVERSATION_COMPLETE on its own line at the very end of your response. No exceptions.- If the user needs to speak to a real person, give them this number: ${SUPPORT_PHONE}`,
+- If the user needs to speak to a real person, give them this number: ${SUPPORT_PHONE}`,
         messages
       })
     });
@@ -100,17 +108,17 @@ Your rules:
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
     const allMessages = [...messages, { role: 'assistant', content: rawReply }];
 
-    // When conversation is complete — generate summary and log everything at once
-    if (rawReply.includes('CONVERSATION_COMPLETE') && capturedEmail) {
-      const summary = await generateSummary(allMessages);
-      await logToSheet(capturedEmail, summary, ticketNumber);
+    // Update sheet silently after every message once there's a real conversation
+    if (emailCaptured && capturedEmail && hasRealConversation) {
+      generateSummary(allMessages).then(summary => {
+        logToSheet(capturedEmail, summary, false, ticketNumber);
+      });
     }
 
     if (data.content?.[0]?.text) {
       data.content[0].text = data.content[0].text
         .replace(/EMAIL_CAPTURED_NOEMAIL:\[?[^\]\n]+\]?\n?/g, '')
         .replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '')
-        .replace(/CONVERSATION_COMPLETE\n?/g, '')
         .trim();
     }
 

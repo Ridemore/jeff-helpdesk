@@ -50,21 +50,28 @@ ${messages.map(m => `${m.role}: ${m.content}`).join('\n')}`
   return data.content?.[0]?.text || 'No summary available';
 }
 
-async function logToSheet(email, summary, sendEmail, ticketNumber) {
+async function logToSheet(email, summary, ticketNumber) {
   await fetch(SHEET_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, summary, sendEmail, ticketNumber })
+    body: JSON.stringify({ email, summary, sendEmail: true, ticketNumber })
   });
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   try {
-    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber } = req.body;
+    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber, sendFinal } = req.body;
 
     if (isFirstMessage) {
       sendNotification();
+    }
+
+    // Chat ended — generate summary, log to sheet, send ticket email
+    if (sendFinal && capturedEmail) {
+      const summary = await generateSummary(messages);
+      await logToSheet(capturedEmail, summary, ticketNumber);
+      return res.status(200).json({ sent: true });
     }
 
     const userMessageCount = messages.filter(m => m.role === 'user').length;
@@ -98,19 +105,6 @@ Your rules:
 
     const data = await response.json();
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
-    const allMessages = [...messages, { role: 'assistant', content: rawReply }];
-
-    // Capture email on message 1 — nothing logged yet
-    const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
-    if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
-      // Just captured — do nothing yet, wait for message 5
-    }
-
-    // Message 5 — generate summary, log to sheet, send email all at once
-    if (emailCaptured && capturedEmail && userMessageCount === 5) {
-      const summary = await generateSummary(allMessages);
-      await logToSheet(capturedEmail, summary, true, ticketNumber);
-    }
 
     if (data.content?.[0]?.text) {
       data.content[0].text = data.content[0].text

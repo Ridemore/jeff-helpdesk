@@ -63,7 +63,7 @@
       <div class="bubble">Hey! I'm Jeff from the PAYATECH help desk. Before we dive in, what's your email so I can open a ticket for you? That way you'll have a record of everything we cover.</div>
     </div>
   </div>
-  <div id="chips" style="display:none;">
+  <div id="chips">
     <div class="chip" onclick="sendChip(this)">Wi-Fi keeps dropping</div>
     <div class="chip" onclick="sendChip(this)">Printer won't connect</div>
     <div class="chip" onclick="sendChip(this)">Computer is slow</div>
@@ -90,6 +90,7 @@
   let history = [];
   let loading = false;
   let emailCaptured = false;
+  let issueSent = false;
 
   inputEl.addEventListener('focus', () => {
     setTimeout(() => {
@@ -119,10 +120,16 @@
     if (el) el.remove();
   }
 
-  function sendChip(el) { inputEl.value = el.textContent; sendMessage(); }
+  function sendChip(el) {
+    chipsEl.style.display = 'none';
+    issueSent = true;
+    inputEl.value = el.textContent;
+    sendMessage();
+  }
 
   function checkPhishing() {
     chipsEl.style.display = 'none';
+    issueSent = true;
     showTyping();
     setTimeout(() => {
       removeTyping();
@@ -133,6 +140,13 @@
   async function sendMessage() {
     const text = inputEl.value.trim();
     if (!text || loading) return;
+
+    // Only hide chips if email is already captured and issue not yet sent
+    if (emailCaptured && !issueSent) {
+      chipsEl.style.display = 'none';
+      issueSent = true;
+    }
+
     addMessage('user', text);
     history.push({ role: 'user', content: text });
     inputEl.value = '';
@@ -154,7 +168,6 @@
       if (rawReply.match(/EMAIL_CAPTURED:/)) {
         emailCaptured = true;
         inputEl.placeholder = 'How can I be of service...';
-        chipsEl.style.display = 'flex';
       }
 
       history.push({ role: 'assistant', content: reply });

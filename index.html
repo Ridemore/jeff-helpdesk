@@ -216,5 +216,12 @@
     } catch(e) {
       removeTyping();
       addMessage('bot', "Hmm, something went wrong. Give it another shot or call us directly.");
-    }
-    loading = false; sendBtn.disable
+    }loading = false; sendBtn.disabled = false;
+  }
+
+  inputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+</script>
+</body>
+</html>

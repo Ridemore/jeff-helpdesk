@@ -38,11 +38,6 @@ async function generateSummary(messages) {
 ✅ Fixed: [one line]
 📞 Next step: [one line]
 
-If the conversation has not gotten to a real tech issue yet, just write:
-🔧 Issue: Not yet described
-✅ Fixed: N/A
-📞 Next step: Awaiting user's issue
-
 No dashes, no asterisks, no extra text. Just the 3 lines. Be brief.
 
 Conversation:
@@ -66,7 +61,7 @@ async function logToSheet(email, summary, sendEmail, ticketNumber) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   try {
-    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber, emailSent } = req.body;
+    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber } = req.body;
 
     if (isFirstMessage) {
       sendNotification();
@@ -97,6 +92,7 @@ Your rules:
 - ${isFirstUserMessage ? 'The user\'s first message is their email address. You MUST immediately tag it on its own line exactly like this: EMAIL_CAPTURED:[their@email.com] — then thank them briefly and ask what the issue is. Example: "EMAIL_CAPTURED:[chad@payatech.com]\nAwesome, got your ticket open! What can I help you with today?"' : ''}
 - ${emailCaptured ? 'IMPORTANT: You already have this user\'s email. Do NOT ask for it again under any circumstances. If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}
 - ${!emailCaptured && !isFirstUserMessage ? 'If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}
+- When the issue is clearly resolved and the conversation is wrapping up, end your response with exactly: CONVERSATION_COMPLETE on its own line.
 - If the user needs to speak to a real person, give them this number: ${SUPPORT_PHONE}`,
         messages
       })
@@ -104,8 +100,9 @@ Your rules:
 
     const data = await response.json();
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
+    const allMessages = [...messages, { role: 'assistant', content: rawReply }];
 
-    // First message — capture email and log initial row to sheet
+    // First message — log email and ticket to sheet with placeholder, no summary yet
     const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
     if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
       const newEmail = emailMatch[1];
@@ -115,15 +112,18 @@ Your rules:
         String(now.getDate()).padStart(2, '0') +
         String(now.getHours()).padStart(2, '0') +
         String(now.getMinutes()).padStart(2, '0');
-      const allMessages = [...messages, { role: 'assistant', content: rawReply }];
+      logToSheet(newEmail, 'Session in progress', false, newTicket);
+    }
+
+    // After 3+ messages — update summary silently, no email
+    if (emailCaptured && capturedEmail && hasRealConversation && !rawReply.includes('CONVERSATION_COMPLETE')) {
       generateSummary(allMessages).then(summary => {
-        logToSheet(newEmail, summary, false, newTicket);
+        logToSheet(capturedEmail, summary, false, ticketNumber);
       });
     }
 
-    // After 3+ messages update summary and send recap email ONCE
-    if (emailCaptured && capturedEmail && hasRealConversation && !emailSent) {
-      const allMessages = [...messages, { role: 'assistant', content: rawReply }];
+    // Conversation complete — final summary and send email
+    if (rawReply.includes('CONVERSATION_COMPLETE') && emailCaptured && capturedEmail) {
       generateSummary(allMessages).then(summary => {
         logToSheet(capturedEmail, summary, true, ticketNumber);
       });
@@ -133,6 +133,7 @@ Your rules:
       data.content[0].text = data.content[0].text
         .replace(/EMAIL_CAPTURED_NOEMAIL:\[?[^\]\n]+\]?\n?/g, '')
         .replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '')
+        .replace(/CONVERSATION_COMPLETE\n?/g, '')
         .trim();
     }
 

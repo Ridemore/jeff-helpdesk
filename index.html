@@ -96,44 +96,44 @@
   let firstUpdateTimer = null;
   let inactivityTimer = null;
 
-  function clearTimers() {
+  function clearAllTimers() {
     if (firstUpdateTimer) clearTimeout(firstUpdateTimer);
     if (inactivityTimer) clearTimeout(inactivityTimer);
   }
 
   async function updateSheet(sendEmail) {
-    if (!emailCaptured || !capturedEmail) return;
-    await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: history,
-        emailCaptured,
-        capturedEmail,
-        ticketNumber,
-        updateSheet: !sendEmail,
-        sendFinal: sendEmail
-      })
-    });
+    if (!capturedEmail || history.length < 2) return;
+    try {
+      await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: history,
+          emailCaptured: true,
+          capturedEmail,
+          ticketNumber,
+          updateSheet: !sendEmail,
+          sendFinal: sendEmail
+        })
+      });
+    } catch(e) {
+      console.error('Sheet update error:', e);
+    }
   }
 
   function startTimers() {
-    clearTimers();
-
-    // After 5 minutes — save summary to sheet, no email
+    clearAllTimers();
+    // 5 minutes — save summary, no email
     firstUpdateTimer = setTimeout(() => {
       updateSheet(false);
     }, 5 * 60 * 1000);
-
-    // After 6 minutes of inactivity — final summary + send email
-    inactivityTimer = setTimeout(() => {
-      updateSheet(true);
-    }, 6 * 60 * 1000);
+    // 6 minutes inactivity — final summary + email
+    resetInactivityTimer();
   }
 
   function resetInactivityTimer() {
     if (inactivityTimer) clearTimeout(inactivityTimer);
-    if (emailCaptured && capturedEmail) {
+    if (capturedEmail) {
       inactivityTimer = setTimeout(() => {
         updateSheet(true);
       }, 6 * 60 * 1000);

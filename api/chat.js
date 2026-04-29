@@ -50,11 +50,11 @@ ${messages.map(m => `${m.role}: ${m.content}`).join('\n')}`
   return data.content?.[0]?.text || 'No summary available';
 }
 
-async function logToSheet(email, summary, sendEmail, ticketNumber) {
+async function logToSheet(email, summary, ticketNumber) {
   await fetch(SHEET_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, summary, sendEmail, ticketNumber })
+    body: JSON.stringify({ email, summary, sendEmail: true, ticketNumber })
   });
 }
 
@@ -69,7 +69,6 @@ export default async function handler(req, res) {
 
     const userMessageCount = messages.filter(m => m.role === 'user').length;
     const isFirstUserMessage = userMessageCount === 1;
-    const hasRealConversation = userMessageCount >= 3;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -102,31 +101,10 @@ Your rules:
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
     const allMessages = [...messages, { role: 'assistant', content: rawReply }];
 
-    // First message — log email and ticket to sheet with placeholder, no summary yet
-    const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
-    if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
-      const newEmail = emailMatch[1];
-      const now = new Date();
-      const newTicket = 'PT-' + now.getFullYear().toString().slice(-2) +
-        String(now.getMonth() + 1).padStart(2, '0') +
-        String(now.getDate()).padStart(2, '0') +
-        String(now.getHours()).padStart(2, '0') +
-        String(now.getMinutes()).padStart(2, '0');
-      logToSheet(newEmail, 'Session in progress', false, newTicket);
-    }
-
-    // After 3+ messages — update summary silently, no email
-    if (emailCaptured && capturedEmail && hasRealConversation && !rawReply.includes('CONVERSATION_COMPLETE')) {
-      generateSummary(allMessages).then(summary => {
-        logToSheet(capturedEmail, summary, false, ticketNumber);
-      });
-    }
-
-    // Conversation complete — final summary and send email
-    if (rawReply.includes('CONVERSATION_COMPLETE') && emailCaptured && capturedEmail) {
-      generateSummary(allMessages).then(summary => {
-        logToSheet(capturedEmail, summary, true, ticketNumber);
-      });
+    // When conversation is complete — generate summary and log everything at once
+    if (rawReply.includes('CONVERSATION_COMPLETE') && capturedEmail) {
+      const summary = await generateSummary(allMessages);
+      await logToSheet(capturedEmail, summary, ticketNumber);
     }
 
     if (data.content?.[0]?.text) {

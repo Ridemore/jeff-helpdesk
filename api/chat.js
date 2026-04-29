@@ -61,19 +61,17 @@ async function logToSheet(email, summary, sendEmail, ticketNumber, status) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   try {
-    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber, isClosing, closeReason } = req.body;
+    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber, sendRecap } = req.body;
 
     if (isFirstMessage) {
       sendNotification();
     }
 
-    // Handle ticket close
-    console.log('isClosing:', isClosing, 'capturedEmail:', capturedEmail, 'closeReason:', closeReason);
-if (isClosing && capturedEmail) {
-      const status = closeReason === 'resolved' ? 'Resolved' : closeReason === 'issues' ? 'Needs Follow Up' : 'Session Timed Out';
+    // If user said yes to email recap — generate summary and send it
+    if (sendRecap && capturedEmail) {
       const summary = await generateSummary(messages);
-      await logToSheet(capturedEmail, summary, true, ticketNumber, status);
-      return res.status(200).json({ ticketClosed: true, status });
+      await logToSheet(capturedEmail, summary, true, ticketNumber, 'Resolved');
+      return res.status(200).json({ recapSent: true });
     }
 
     const userMessageCount = messages.filter(m => m.role === 'user').length;
@@ -100,7 +98,7 @@ Your rules:
 - ${isFirstUserMessage ? 'The user\'s first message is their email address. You MUST immediately tag it on its own line exactly like this: EMAIL_CAPTURED:[their@email.com] — then thank them briefly and ask what the issue is. Example: "EMAIL_CAPTURED:[chad@payatech.com]\nAwesome, got your ticket open! What can I help you with today?"' : ''}
 - ${emailCaptured ? 'IMPORTANT: You already have this user\'s email. Do NOT ask for it again under any circumstances. If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}
 - ${!emailCaptured && !isFirstUserMessage ? 'If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}
-- When the issue appears resolved, end your response with: SHOW_CLOSE_BUTTONS
+- When the issue appears resolved, ask: "Want me to email you a copy of this ticket?" — if the user says yes, respond with exactly: SEND_RECAP on its own line, then confirm the email is on its way.
 - If the user needs to speak to a real person, give them this number: ${SUPPORT_PHONE}`,
         messages
       })
@@ -109,7 +107,7 @@ Your rules:
     const data = await response.json();
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
 
-    // First message — log email and ticket to sheet with placeholder summary
+    // First message — log email and ticket to sheet
     const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
     if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
       const newEmail = emailMatch[1];
@@ -122,10 +120,17 @@ Your rules:
       logToSheet(newEmail, 'Session in progress', false, newTicket, 'Open');
     }
 
+    // If Jeff included SEND_RECAP tag generate summary and send email
+    if (rawReply.includes('SEND_RECAP') && capturedEmail) {
+      const summary = await generateSummary(messages);
+      await logToSheet(capturedEmail, summary, true, ticketNumber, 'Resolved');
+    }
+
     if (data.content?.[0]?.text) {
       data.content[0].text = data.content[0].text
         .replace(/EMAIL_CAPTURED_NOEMAIL:\[?[^\]\n]+\]?\n?/g, '')
         .replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '')
+        .replace(/SEND_RECAP\n?/g, '')
         .trim();
     }
 

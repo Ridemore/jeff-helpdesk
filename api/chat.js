@@ -74,6 +74,7 @@ export default async function handler(req, res) {
 
     const userMessageCount = messages.filter(m => m.role === 'user').length;
     const isFirstUserMessage = userMessageCount === 1;
+    const hasRealConversation = userMessageCount >= 3;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -104,7 +105,7 @@ Your rules:
     const data = await response.json();
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
 
-    // On first message capture the email and log initial sheet entry
+    // First message — capture email and log initial sheet entry without sending email
     const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
     if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
       const newEmail = emailMatch[1];
@@ -120,8 +121,16 @@ Your rules:
       });
     }
 
-    // On every message after email is captured update the summary
-    if (emailCaptured && capturedEmail && userMessageCount > 1) {
+    // After 3+ messages update the summary and send the recap email
+    if (emailCaptured && capturedEmail && hasRealConversation) {
+      const allMessages = [...messages, { role: 'assistant', content: rawReply }];
+      generateSummary(allMessages).then(summary => {
+        logToSheet(capturedEmail, summary, true, ticketNumber);
+      });
+    }
+
+    // Between 1 and 3 messages just update the summary without sending email
+    if (emailCaptured && capturedEmail && !hasRealConversation && userMessageCount > 1) {
       const allMessages = [...messages, { role: 'assistant', content: rawReply }];
       generateSummary(allMessages).then(summary => {
         logToSheet(capturedEmail, summary, false, ticketNumber);

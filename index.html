@@ -60,7 +60,7 @@
   <div id="messages">
     <div class="msg bot">
       <div class="msg-avatar">JF</div>
-      <div class="bubble">Hey! I'm Jeff from the PAYATECH help desk. Got a tech issue? I'm here to help! Wi-Fi, printers, slow computers, email, you name it. What's going on?</div>
+      <div class="bubble">Hey! I'm Jeff from the PAYATECH help desk. Before we dive in, what's your email so I can open a ticket for you?</div>
     </div>
   </div>
   <div id="chips">
@@ -72,7 +72,7 @@
     <div class="chip" onclick="checkPhishing()">Check if email is fake</div>
   </div>
   <div id="input-row">
-    <textarea id="user-input" placeholder="How can I be of service..." rows="1"></textarea>
+    <textarea id="user-input" placeholder="Type your email to get started..." rows="1"></textarea>
     <button id="send-btn" onclick="sendMessage()">
       <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
     </button>
@@ -91,6 +91,9 @@
   let loading = false;
   let emailCaptured = false;
   let capturedEmail = '';
+  let ticketNumber = '';
+  let issueSent = false;
+  let emailSent = false;
 
   inputEl.addEventListener('focus', () => {
     setTimeout(() => {
@@ -122,12 +125,14 @@
 
   function sendChip(el) {
     chipsEl.style.display = 'none';
+    issueSent = true;
     inputEl.value = el.textContent;
     sendMessage();
   }
 
   function checkPhishing() {
     chipsEl.style.display = 'none';
+    issueSent = true;
     showTyping();
     setTimeout(() => {
       removeTyping();
@@ -138,7 +143,12 @@
   async function sendMessage() {
     const text = inputEl.value.trim();
     if (!text || loading) return;
-    chipsEl.style.display = 'none';
+
+    if (emailCaptured && !issueSent) {
+      chipsEl.style.display = 'none';
+      issueSent = true;
+    }
+
     addMessage('user', text);
     history.push({ role: 'user', content: text });
     inputEl.value = '';
@@ -148,20 +158,38 @@
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history, isFirstMessage: history.length === 1, emailCaptured, capturedEmail })
+        body: JSON.stringify({
+          messages: history,
+          isFirstMessage: history.length === 1,
+          emailCaptured,
+          capturedEmail,
+          ticketNumber,
+          emailSent
+        })
       });
       const data = await res.json();
       const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
       const reply = rawReply
         .replace(/EMAIL_CAPTURED_NOEMAIL:\[?[^\]\n]+\]?\n?/g, '')
         .replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '')
-        .replace(/CONVERSATION_COMPLETE\n?/g, '')
         .trim();
 
       if (rawReply.match(/EMAIL_CAPTURED:/)) {
         emailCaptured = true;
         const match = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
         if (match) capturedEmail = match[1];
+        const now = new Date();
+        ticketNumber = 'PT-' + now.getFullYear().toString().slice(-2) +
+          String(now.getMonth() + 1).padStart(2, '0') +
+          String(now.getDate()).padStart(2, '0') +
+          String(now.getHours()).padStart(2, '0') +
+          String(now.getMinutes()).padStart(2, '0');
+        inputEl.placeholder = 'How can I be of service...';
+      }
+
+      // Mark email as sent after 3 messages so it only fires once
+      if (emailCaptured && history.filter(m => m.role === 'user').length >= 3 && !emailSent) {
+        emailSent = true;
       }
 
       history.push({ role: 'assistant', content: reply });

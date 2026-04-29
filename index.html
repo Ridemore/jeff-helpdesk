@@ -90,6 +90,8 @@
   let history = [];
   let loading = false;
   let emailCaptured = false;
+  let capturedEmail = '';
+  let ticketNumber = '';
   let issueSent = false;
 
   inputEl.addEventListener('focus', () => {
@@ -141,7 +143,6 @@
     const text = inputEl.value.trim();
     if (!text || loading) return;
 
-    // Only hide chips if email is already captured and issue not yet sent
     if (emailCaptured && !issueSent) {
       chipsEl.style.display = 'none';
       issueSent = true;
@@ -156,7 +157,13 @@
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history, isFirstMessage: history.length === 1, emailCaptured })
+        body: JSON.stringify({
+          messages: history,
+          isFirstMessage: history.length === 1,
+          emailCaptured,
+          capturedEmail,
+          ticketNumber
+        })
       });
       const data = await res.json();
       const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
@@ -167,6 +174,14 @@
 
       if (rawReply.match(/EMAIL_CAPTURED:/)) {
         emailCaptured = true;
+        const match = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
+        if (match) capturedEmail = match[1];
+        const now = new Date();
+        ticketNumber = 'PT-' + now.getFullYear().toString().slice(-2) +
+          String(now.getMonth() + 1).padStart(2, '0') +
+          String(now.getDate()).padStart(2, '0') +
+          String(now.getHours()).padStart(2, '0') +
+          String(now.getMinutes()).padStart(2, '0');
         inputEl.placeholder = 'How can I be of service...';
       }
 

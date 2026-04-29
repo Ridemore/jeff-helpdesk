@@ -60,10 +60,10 @@
   <div id="messages">
     <div class="msg bot">
       <div class="msg-avatar">JF</div>
-      <div class="bubble">Hey! I'm Jeff from the PAYATECH help desk. Before we dive in, what's your email so I can open a ticket for you?</div>
+      <div class="bubble">Hey! I'm Jeff from the PAYATECH help desk. Before we dive in, what's your email so I can open a ticket for you? That way you'll have a record of everything we cover.</div>
     </div>
   </div>
-  <div id="chips">
+  <div id="chips" style="display:none;">
     <div class="chip" onclick="sendChip(this)">Wi-Fi keeps dropping</div>
     <div class="chip" onclick="sendChip(this)">Printer won't connect</div>
     <div class="chip" onclick="sendChip(this)">Computer is slow</div>
@@ -90,55 +90,6 @@
   let history = [];
   let loading = false;
   let emailCaptured = false;
-  let capturedEmail = '';
-  let ticketNumber = '';
-  let issueSent = false;
-  let firstUpdateTimer = null;
-  let inactivityTimer = null;
-
-  function clearAllTimers() {
-    if (firstUpdateTimer) clearTimeout(firstUpdateTimer);
-    if (inactivityTimer) clearTimeout(inactivityTimer);
-  }
-
-  async function updateSheet(sendEmail) {
-    if (!capturedEmail || history.length < 2) return;
-    try {
-      await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: history,
-          emailCaptured: true,
-          capturedEmail,
-          ticketNumber,
-          updateSheet: !sendEmail,
-          sendFinal: sendEmail
-        })
-      });
-    } catch(e) {
-      console.error('Sheet update error:', e);
-    }
-  }
-
-  function startTimers() {
-    clearAllTimers();
-    // 5 minutes — save summary, no email
-    firstUpdateTimer = setTimeout(() => {
-      updateSheet(false);
-    }, 5 * 60 * 1000);
-    // 6 minutes inactivity — final summary + email
-    resetInactivityTimer();
-  }
-
-  function resetInactivityTimer() {
-    if (inactivityTimer) clearTimeout(inactivityTimer);
-    if (capturedEmail) {
-      inactivityTimer = setTimeout(() => {
-        updateSheet(true);
-      }, 6 * 60 * 1000);
-    }
-  }
 
   inputEl.addEventListener('focus', () => {
     setTimeout(() => {
@@ -168,16 +119,10 @@
     if (el) el.remove();
   }
 
-  function sendChip(el) {
-    chipsEl.style.display = 'none';
-    issueSent = true;
-    inputEl.value = el.textContent;
-    sendMessage();
-  }
+  function sendChip(el) { inputEl.value = el.textContent; sendMessage(); }
 
   function checkPhishing() {
     chipsEl.style.display = 'none';
-    issueSent = true;
     showTyping();
     setTimeout(() => {
       removeTyping();
@@ -188,12 +133,6 @@
   async function sendMessage() {
     const text = inputEl.value.trim();
     if (!text || loading) return;
-
-    if (emailCaptured && !issueSent) {
-      chipsEl.style.display = 'none';
-      issueSent = true;
-    }
-
     addMessage('user', text);
     history.push({ role: 'user', content: text });
     inputEl.value = '';
@@ -203,13 +142,7 @@
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: history,
-          isFirstMessage: history.length === 1,
-          emailCaptured,
-          capturedEmail,
-          ticketNumber
-        })
+        body: JSON.stringify({ messages: history, isFirstMessage: history.length === 1, emailCaptured })
       });
       const data = await res.json();
       const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
@@ -220,19 +153,10 @@
 
       if (rawReply.match(/EMAIL_CAPTURED:/)) {
         emailCaptured = true;
-        const match = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
-        if (match) capturedEmail = match[1];
-        const now = new Date();
-        ticketNumber = 'PT-' + now.getFullYear().toString().slice(-2) +
-          String(now.getMonth() + 1).padStart(2, '0') +
-          String(now.getDate()).padStart(2, '0') +
-          String(now.getHours()).padStart(2, '0') +
-          String(now.getMinutes()).padStart(2, '0');
         inputEl.placeholder = 'How can I be of service...';
-        startTimers();
+        chipsEl.style.display = 'flex';
       }
 
-      resetInactivityTimer();
       history.push({ role: 'assistant', content: reply });
       removeTyping();
       addMessage('bot', reply);

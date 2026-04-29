@@ -60,7 +60,7 @@
   <div id="messages">
     <div class="msg bot">
       <div class="msg-avatar">JF</div>
-      <div class="bubble">Hey! I'm Jeff from the PAYATECH help desk. Before we dive in, what's your email so I can open a ticket for you? That way you'll have a record of everything we cover.</div>
+      <div class="bubble">Hey! I'm Jeff from the PAYATECH help desk. Got a tech issue? I'm here to help! Wi-Fi, printers, slow computers, email, you name it. What's going on?</div>
     </div>
   </div>
   <div id="chips">
@@ -72,7 +72,7 @@
     <div class="chip" onclick="checkPhishing()">Check if email is fake</div>
   </div>
   <div id="input-row">
-    <textarea id="user-input" placeholder="Type your email to get started..." rows="1"></textarea>
+    <textarea id="user-input" placeholder="How can I be of service..." rows="1"></textarea>
     <button id="send-btn" onclick="sendMessage()">
       <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
     </button>
@@ -90,7 +90,6 @@
   let history = [];
   let loading = false;
   let emailCaptured = false;
-  let issueSent = false;
 
   inputEl.addEventListener('focus', () => {
     setTimeout(() => {
@@ -122,14 +121,12 @@
 
   function sendChip(el) {
     chipsEl.style.display = 'none';
-    issueSent = true;
     inputEl.value = el.textContent;
     sendMessage();
   }
 
   function checkPhishing() {
     chipsEl.style.display = 'none';
-    issueSent = true;
     showTyping();
     setTimeout(() => {
       removeTyping();
@@ -140,13 +137,7 @@
   async function sendMessage() {
     const text = inputEl.value.trim();
     if (!text || loading) return;
-
-    // Only hide chips if email is already captured and issue not yet sent
-    if (emailCaptured && !issueSent) {
-      chipsEl.style.display = 'none';
-      issueSent = true;
-    }
-
+    chipsEl.style.display = 'none';
     addMessage('user', text);
     history.push({ role: 'user', content: text });
     inputEl.value = '';
@@ -165,10 +156,7 @@
         .replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '')
         .trim();
 
-      if (rawReply.match(/EMAIL_CAPTURED:/)) {
-        emailCaptured = true;
-        inputEl.placeholder = 'How can I be of service...';
-      }
+      if (rawReply.match(/EMAIL_CAPTURED:/)) emailCaptured = true;
 
       history.push({ role: 'assistant', content: reply });
       removeTyping();

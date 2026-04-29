@@ -29,21 +29,16 @@ async function generateSummary(messages) {
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 150,
+      max_tokens: 200,
       messages: [
         {
           role: 'user',
-          content: `Summarize this help desk conversation in exactly 3 very short bullet points, one sentence each max:
+          content: `Summarize this help desk conversation in exactly 3 bullet points using this format:
 🔧 Issue: [one line]
 ✅ Fixed: [one line]
 📞 Next step: [one line]
 
-If the conversation has not gotten to a real tech issue yet, just write:
-🔧 Issue: Not yet described
-✅ Fixed: N/A
-📞 Next step: Awaiting user's issue
-
-No dashes, no asterisks, no extra text. Just the 3 lines. Be brief.
+No dashes, no asterisks, no extra text. Just the 3 lines. Keep it short and friendly.
 
 Conversation:
 ${messages.map(m => `${m.role}: ${m.content}`).join('\n')}`
@@ -74,7 +69,6 @@ export default async function handler(req, res) {
 
     const userMessageCount = messages.filter(m => m.role === 'user').length;
     const isFirstUserMessage = userMessageCount === 1;
-    const hasRealConversation = userMessageCount >= 3;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -97,6 +91,7 @@ Your rules:
 - ${isFirstUserMessage ? 'The user\'s first message is their email address. You MUST immediately tag it on its own line exactly like this: EMAIL_CAPTURED:[their@email.com] — then thank them briefly and ask what the issue is. Example: "EMAIL_CAPTURED:[chad@payatech.com]\nAwesome, got your ticket open! What can I help you with today?"' : ''}
 - ${emailCaptured ? 'IMPORTANT: You already have this user\'s email. Do NOT ask for it again under any circumstances. If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}
 - ${!emailCaptured && !isFirstUserMessage ? 'If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}
+- When the issue appears resolved, ask: "Want me to email you a copy of this ticket?" — if the user says yes, respond with exactly SEND_RECAP on its own line then confirm the email is on its way.
 - If the user needs to speak to a real person, give them this number: ${SUPPORT_PHONE}`,
         messages
       })
@@ -105,7 +100,7 @@ Your rules:
     const data = await response.json();
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
 
-    // First message — log email and ticket to sheet
+    // First message — log email and ticket to sheet with placeholder
     const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
     if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
       const newEmail = emailMatch[1];
@@ -118,11 +113,11 @@ Your rules:
       logToSheet(newEmail, 'Session in progress', false, newTicket);
     }
 
-    // After 3+ messages update summary
-    if (emailCaptured && capturedEmail && hasRealConversation) {
+    // User said yes to recap — generate summary from full conversation and send email
+    if (rawReply.includes('SEND_RECAP') && capturedEmail) {
       const allMessages = [...messages, { role: 'assistant', content: rawReply }];
       generateSummary(allMessages).then(summary => {
-        logToSheet(capturedEmail, summary, false, ticketNumber);
+        logToSheet(capturedEmail, summary, true, ticketNumber);
       });
     }
 
@@ -130,6 +125,7 @@ Your rules:
       data.content[0].text = data.content[0].text
         .replace(/EMAIL_CAPTURED_NOEMAIL:\[?[^\]\n]+\]?\n?/g, '')
         .replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '')
+        .replace(/SEND_RECAP\n?/g, '')
         .trim();
     }
 

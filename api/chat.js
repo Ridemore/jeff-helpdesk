@@ -61,22 +61,22 @@ async function logToSheet(email, summary, sendEmail, ticketNumber, status) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   try {
-    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber, closeTicket, stillIssues, timedOut } = req.body;
+    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber, isClosing, closeReason } = req.body;
 
     if (isFirstMessage) {
       sendNotification();
     }
 
-    const userMessageCount = messages.filter(m => m.role === 'user').length;
-    const isFirstUserMessage = userMessageCount === 1;
-
-    // Handle ticket close, still having issues, or timeout
-   if ((closeTicket || stillIssues || timedOut) && capturedEmail) {
-      const status = closeTicket ? 'Resolved' : stillIssues ? 'Needs Follow Up' : 'Session Timed Out';
+    // Handle ticket close
+    if (isClosing && capturedEmail) {
+      const status = closeReason === 'resolved' ? 'Resolved' : closeReason === 'issues' ? 'Needs Follow Up' : 'Session Timed Out';
       const summary = await generateSummary(messages);
       await logToSheet(capturedEmail, summary, true, ticketNumber, status);
       return res.status(200).json({ ticketClosed: true, status });
     }
+
+    const userMessageCount = messages.filter(m => m.role === 'user').length;
+    const isFirstUserMessage = userMessageCount === 1;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',

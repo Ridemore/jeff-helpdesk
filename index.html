@@ -114,7 +114,7 @@
         } catch(e) {
           console.error('Final send error:', e);
         }
-      }, 10 * 60 * 1000);
+      }, 2 * 60 * 1000);
     }
   }
 
@@ -216,7 +216,8 @@
     } catch(e) {
       removeTyping();
       addMessage('bot', "Hmm, something went wrong. Give it another shot or call us directly.");
-    }loading = false; sendBtn.disabled = false;
+    }
+    loading = false; sendBtn.disabled = false;
   }
 
   inputEl.addEventListener('keydown', e => {

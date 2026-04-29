@@ -66,7 +66,7 @@ async function logToSheet(email, summary, sendEmail, ticketNumber) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   try {
-    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber } = req.body;
+    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber, emailSent } = req.body;
 
     if (isFirstMessage) {
       sendNotification();
@@ -105,7 +105,7 @@ Your rules:
     const data = await response.json();
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
 
-    // First message — capture email and log initial sheet entry without sending email
+    // First message — capture email and log initial row to sheet
     const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
     if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
       const newEmail = emailMatch[1];
@@ -121,19 +121,11 @@ Your rules:
       });
     }
 
-    // After 3+ messages update the summary and send the recap email
-    if (emailCaptured && capturedEmail && hasRealConversation) {
+    // After 3+ messages update summary and send recap email ONCE
+    if (emailCaptured && capturedEmail && hasRealConversation && !emailSent) {
       const allMessages = [...messages, { role: 'assistant', content: rawReply }];
       generateSummary(allMessages).then(summary => {
         logToSheet(capturedEmail, summary, true, ticketNumber);
-      });
-    }
-
-    // Between 1 and 3 messages just update the summary without sending email
-    if (emailCaptured && capturedEmail && !hasRealConversation && userMessageCount > 1) {
-      const allMessages = [...messages, { role: 'assistant', content: rawReply }];
-      generateSummary(allMessages).then(summary => {
-        logToSheet(capturedEmail, summary, false, ticketNumber);
       });
     }
 

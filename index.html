@@ -76,8 +76,8 @@
     <div class="chip" onclick="checkPhishing()">Check if email is fake</div>
   </div>
   <div id="close-buttons">
-    <button class="close-btn primary" onclick="closeTicket('resolved')">All done, close ticket</button>
-    <button class="close-btn secondary" onclick="closeTicket('issues')">Still having issues</button>
+    <button class="close-btn primary" onclick="handleClose('resolved')">All done, close ticket</button>
+    <button class="close-btn secondary" onclick="handleClose('issues')">Still having issues</button>
   </div>
   <div id="input-row">
     <textarea id="user-input" placeholder="Type your email to get started..." rows="1"></textarea>
@@ -104,23 +104,21 @@
   let issueSent = false;
   let sessionTimer = null;
 
-  // 45 minute session timeout
   function resetSessionTimer() {
     if (sessionTimer) clearTimeout(sessionTimer);
     if (emailCaptured && capturedEmail) {
       sessionTimer = setTimeout(() => {
-        closeTicket('timeout');
+        handleClose('timeout');
       }, 45 * 60 * 1000);
     }
   }
 
-  async function closeTicket(reason) {
+  async function handleClose(reason) {
     if (sessionTimer) clearTimeout(sessionTimer);
     closeButtonsEl.style.display = 'none';
     inputEl.disabled = true;
     sendBtn.disabled = true;
 
-    const status = reason === 'resolved' ? 'Resolved' : reason === 'issues' ? 'Needs Follow Up' : 'Session Timed Out';
     const message = reason === 'resolved'
       ? "Ticket closed! Check your email for a summary of what we covered. Hope everything works great!"
       : reason === 'issues'
@@ -137,9 +135,8 @@
         emailCaptured,
         capturedEmail,
         ticketNumber,
-        closeTicket: reason === 'resolved',
-        stillIssues: reason === 'issues',
-        timedOut: reason === 'timeout'
+        isClosing: true,
+        closeReason: reason
       })
     });
   }

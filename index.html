@@ -147,7 +147,7 @@
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history, isFirstMessage: history.length === 1, emailCaptured })
+body: JSON.stringify({ messages: history, isFirstMessage: history.length === 1, emailCaptured, capturedEmail })
       });
       const data = await res.json();
       const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";

@@ -93,28 +93,6 @@
   let capturedEmail = '';
   let ticketNumber = '';
   let issueSent = false;
-  let summaryTimer = null;
-
-  // Update summary in sheet every 15 minutes silently
-  function startSummaryTimer() {
-    if (summaryTimer) clearInterval(summaryTimer);
-    summaryTimer = setInterval(async () => {
-      if (emailCaptured && capturedEmail && history.length > 2) {
-        await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: history,
-            emailCaptured,
-            capturedEmail,
-            ticketNumber,
-            sendRecap: false,
-            updateSummary: true
-          })
-        });
-      }
-    }, 15 * 60 * 1000);
-  }
 
   inputEl.addEventListener('focus', () => {
     setTimeout(() => {
@@ -189,11 +167,9 @@
       });
       const data = await res.json();
       const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
-
       const reply = rawReply
         .replace(/EMAIL_CAPTURED_NOEMAIL:\[?[^\]\n]+\]?\n?/g, '')
         .replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '')
-        .replace(/SEND_RECAP\n?/g, '')
         .trim();
 
       if (rawReply.match(/EMAIL_CAPTURED:/)) {
@@ -207,7 +183,6 @@
           String(now.getHours()).padStart(2, '0') +
           String(now.getMinutes()).padStart(2, '0');
         inputEl.placeholder = 'How can I be of service...';
-        startSummaryTimer();
       }
 
       history.push({ role: 'assistant', content: reply });

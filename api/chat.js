@@ -127,7 +127,7 @@ Your rules:
       }
     }
 
-    // No email match but we have email — update summary silently
+    // Have email already — update summary silently on every message
     if (!emailMatch && emailCaptured && capturedEmail && hasRealConversation) {
       generateSummary(allMessages).then(summary => {
         logToSheet(capturedEmail, summary, false);
@@ -141,7 +141,7 @@ Your rules:
       });
     }
 
-    // No email match for troubleshooting email
+    // Can't access email flow
     const noEmailMatch = rawReply.match(/EMAIL_CAPTURED_NOEMAIL:\[?([^\]\n]+)\]?/);
     if (noEmailMatch) {
       const newEmail = noEmailMatch[1];

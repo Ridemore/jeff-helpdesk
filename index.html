@@ -93,6 +93,7 @@
   let capturedEmail = '';
   let ticketNumber = '';
   let issueSent = false;
+  let emailSent = false;
 
   inputEl.addEventListener('focus', () => {
     setTimeout(() => {
@@ -162,7 +163,8 @@
           isFirstMessage: history.length === 1,
           emailCaptured,
           capturedEmail,
-          ticketNumber
+          ticketNumber,
+          emailSent
         })
       });
       const data = await res.json();
@@ -183,6 +185,11 @@
           String(now.getHours()).padStart(2, '0') +
           String(now.getMinutes()).padStart(2, '0');
         inputEl.placeholder = 'How can I be of service...';
+      }
+
+      // Mark email as sent after 3 messages so it only fires once
+      if (emailCaptured && history.filter(m => m.role === 'user').length >= 3 && !emailSent) {
+        emailSent = true;
       }
 
       history.push({ role: 'assistant', content: reply });

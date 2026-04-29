@@ -68,7 +68,8 @@ export default async function handler(req, res) {
     }
 
     // Handle ticket close
-    if (isClosing && capturedEmail) {
+    console.log('isClosing:', isClosing, 'capturedEmail:', capturedEmail, 'closeReason:', closeReason);
+if (isClosing && capturedEmail) {
       const status = closeReason === 'resolved' ? 'Resolved' : closeReason === 'issues' ? 'Needs Follow Up' : 'Session Timed Out';
       const summary = await generateSummary(messages);
       await logToSheet(capturedEmail, summary, true, ticketNumber, status);

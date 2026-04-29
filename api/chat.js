@@ -71,11 +71,10 @@ export default async function handler(req, res) {
     const isFirstUserMessage = userMessageCount === 1;
 
     // Handle ticket close, still having issues, or timeout
-    if ((closeTicket || stillIssues || timedOut) && capturedEmail) {
+   if ((closeTicket || stillIssues || timedOut) && capturedEmail) {
       const status = closeTicket ? 'Resolved' : stillIssues ? 'Needs Follow Up' : 'Session Timed Out';
-      generateSummary(messages).then(summary => {
-        logToSheet(capturedEmail, summary, true, ticketNumber, status);
-      });
+      const summary = await generateSummary(messages);
+      await logToSheet(capturedEmail, summary, true, ticketNumber, status);
       return res.status(200).json({ ticketClosed: true, status });
     }
 

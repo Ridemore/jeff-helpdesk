@@ -38,6 +38,11 @@ async function generateSummary(messages) {
 ✅ Fixed: [one line]
 📞 Next step: [one line]
 
+If the conversation has not gotten to a real tech issue yet, just write:
+🔧 Issue: Not yet described
+✅ Fixed: N/A
+📞 Next step: Awaiting user's issue
+
 No dashes, no asterisks, no extra text. Just the 3 lines. Be brief.
 
 Conversation:
@@ -50,18 +55,18 @@ ${messages.map(m => `${m.role}: ${m.content}`).join('\n')}`
   return data.content?.[0]?.text || 'No summary available';
 }
 
-async function logToSheet(email, summary, sendEmail) {
+async function logToSheet(email, summary, sendEmail, ticketNumber) {
   await fetch(SHEET_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, summary, sendEmail })
+    body: JSON.stringify({ email, summary, sendEmail, ticketNumber })
   });
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   try {
-    const { messages, isFirstMessage, emailCaptured } = req.body;
+    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber } = req.body;
 
     if (isFirstMessage) {
       sendNotification();
@@ -69,7 +74,6 @@ export default async function handler(req, res) {
 
     const userMessageCount = messages.filter(m => m.role === 'user').length;
     const isFirstUserMessage = userMessageCount === 1;
-    const askForEmail = false;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -100,21 +104,27 @@ Your rules:
     const data = await response.json();
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
 
+    // On first message capture the email and log initial sheet entry
     const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
     if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
-      const capturedEmail = emailMatch[1];
+      const newEmail = emailMatch[1];
+      const now = new Date();
+      const newTicket = 'PT-' + now.getFullYear().toString().slice(-2) +
+        String(now.getMonth() + 1).padStart(2, '0') +
+        String(now.getDate()).padStart(2, '0') +
+        String(now.getHours()).padStart(2, '0') +
+        String(now.getMinutes()).padStart(2, '0');
       const allMessages = [...messages, { role: 'assistant', content: rawReply }];
       generateSummary(allMessages).then(summary => {
-        logToSheet(capturedEmail, summary, true);
+        logToSheet(newEmail, summary, false, newTicket);
       });
     }
 
-    const noEmailMatch = rawReply.match(/EMAIL_CAPTURED_NOEMAIL:\[?([^\]\n]+)\]?/);
-    if (noEmailMatch) {
-      const capturedEmail = noEmailMatch[1];
+    // On every message after email is captured update the summary
+    if (emailCaptured && capturedEmail && userMessageCount > 1) {
       const allMessages = [...messages, { role: 'assistant', content: rawReply }];
       generateSummary(allMessages).then(summary => {
-        logToSheet(capturedEmail, summary, false);
+        logToSheet(capturedEmail, summary, false, ticketNumber);
       });
     }
 

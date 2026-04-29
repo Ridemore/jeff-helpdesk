@@ -29,16 +29,16 @@ async function generateSummary(messages) {
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 150,
+      max_tokens: 200,
       messages: [
         {
           role: 'user',
-          content: `Summarize this help desk conversation in exactly 3 very short bullet points, one sentence each max:
-🔧 Issue: [one line]
-✅ Fixed: [one line]
-📞 Next step: [one line]
+          content: `Summarize this help desk conversation in exactly 3 bullet points using this format:
+🔧 What the issue was
+✅ What we tried or fixed
+📞 What the next step is if the problem continues
 
-No dashes, no asterisks, no extra text. Just the 3 lines. Be brief.
+No dashes, no asterisks, no extra text. Just the 3 lines. Keep it short and friendly.
 
 Conversation:
 ${messages.map(m => `${m.role}: ${m.content}`).join('\n')}`
@@ -61,22 +61,14 @@ async function logToSheet(email, summary, sendEmail, ticketNumber) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   try {
-    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber, sendFinal } = req.body;
+    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber } = req.body;
 
     if (isFirstMessage) {
       sendNotification();
     }
 
-    // Final call from inactivity timer — generate summary and send email
-    if (sendFinal && capturedEmail) {
-      const summary = await generateSummary(messages);
-      await logToSheet(capturedEmail, summary, true, ticketNumber);
-      return res.status(200).json({ sent: true });
-    }
-
     const userMessageCount = messages.filter(m => m.role === 'user').length;
     const isFirstUserMessage = userMessageCount === 1;
-    const hasRealConversation = userMessageCount >= 3;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -108,11 +100,16 @@ Your rules:
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
     const allMessages = [...messages, { role: 'assistant', content: rawReply }];
 
-    // Update sheet silently after every message once there's a real conversation
-    if (emailCaptured && capturedEmail && hasRealConversation) {
-      generateSummary(allMessages).then(summary => {
-        logToSheet(capturedEmail, summary, false, ticketNumber);
-      });
+    // Capture email on message 1 — nothing logged yet
+    const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
+    if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
+      // Just captured — do nothing yet, wait for message 5
+    }
+
+    // Message 5 — generate summary, log to sheet, send email all at once
+    if (emailCaptured && capturedEmail && userMessageCount === 5) {
+      const summary = await generateSummary(allMessages);
+      await logToSheet(capturedEmail, summary, true, ticketNumber);
     }
 
     if (data.content?.[0]?.text) {

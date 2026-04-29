@@ -93,7 +93,30 @@
   let capturedEmail = '';
   let ticketNumber = '';
   let issueSent = false;
-  let emailSent = false;
+  let inactivityTimer = null;
+
+  function resetInactivityTimer() {
+    if (inactivityTimer) clearTimeout(inactivityTimer);
+    if (capturedEmail) {
+      inactivityTimer = setTimeout(async () => {
+        try {
+          await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              messages: history,
+              emailCaptured,
+              capturedEmail,
+              ticketNumber,
+              sendFinal: true
+            })
+          });
+        } catch(e) {
+          console.error('Final send error:', e);
+        }
+      }, 10 * 60 * 1000);
+    }
+  }
 
   inputEl.addEventListener('focus', () => {
     setTimeout(() => {
@@ -163,8 +186,7 @@
           isFirstMessage: history.length === 1,
           emailCaptured,
           capturedEmail,
-          ticketNumber,
-          emailSent
+          ticketNumber
         })
       });
       const data = await res.json();
@@ -187,11 +209,7 @@
         inputEl.placeholder = 'How can I be of service...';
       }
 
-      // Mark email as sent after 3 messages so it only fires once
-      if (emailCaptured && history.filter(m => m.role === 'user').length >= 3 && !emailSent) {
-        emailSent = true;
-      }
-
+      resetInactivityTimer();
       history.push({ role: 'assistant', content: reply });
       removeTyping();
       addMessage('bot', reply);
@@ -199,12 +217,4 @@
       removeTyping();
       addMessage('bot', "Hmm, something went wrong. Give it another shot or call us directly.");
     }
-    loading = false; sendBtn.disabled = false;
-  }
-
-  inputEl.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-  });
-</script>
-</body>
-</html>
+    loading = false; sendBtn.disable

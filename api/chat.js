@@ -38,6 +38,11 @@ async function generateSummary(messages) {
 ✅ Fixed: [one line]
 📞 Next step: [one line]
 
+If the conversation has not gotten to a real tech issue yet, just write:
+🔧 Issue: Not yet described
+✅ Fixed: N/A
+📞 Next step: Awaiting user's issue
+
 No dashes, no asterisks, no extra text. Just the 3 lines. Be brief.
 
 Conversation:
@@ -50,32 +55,26 @@ ${messages.map(m => `${m.role}: ${m.content}`).join('\n')}`
   return data.content?.[0]?.text || 'No summary available';
 }
 
-async function logToSheet(email, summary, sendEmail, ticketNumber, status) {
+async function logToSheet(email, summary, sendEmail, ticketNumber) {
   await fetch(SHEET_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, summary, sendEmail, ticketNumber, status })
+    body: JSON.stringify({ email, summary, sendEmail, ticketNumber })
   });
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   try {
-    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber, sendRecap } = req.body;
+    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber } = req.body;
 
     if (isFirstMessage) {
       sendNotification();
     }
 
-    // If user said yes to email recap — generate summary and send it
-    if (sendRecap && capturedEmail) {
-      const summary = await generateSummary(messages);
-      await logToSheet(capturedEmail, summary, true, ticketNumber, 'Resolved');
-      return res.status(200).json({ recapSent: true });
-    }
-
     const userMessageCount = messages.filter(m => m.role === 'user').length;
     const isFirstUserMessage = userMessageCount === 1;
+    const hasRealConversation = userMessageCount >= 3;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -98,7 +97,6 @@ Your rules:
 - ${isFirstUserMessage ? 'The user\'s first message is their email address. You MUST immediately tag it on its own line exactly like this: EMAIL_CAPTURED:[their@email.com] — then thank them briefly and ask what the issue is. Example: "EMAIL_CAPTURED:[chad@payatech.com]\nAwesome, got your ticket open! What can I help you with today?"' : ''}
 - ${emailCaptured ? 'IMPORTANT: You already have this user\'s email. Do NOT ask for it again under any circumstances. If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}
 - ${!emailCaptured && !isFirstUserMessage ? 'If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}
-- When the issue appears resolved, ask: "Want me to email you a copy of this ticket?" — if the user says yes, respond with exactly: SEND_RECAP on its own line, then confirm the email is on its way.
 - If the user needs to speak to a real person, give them this number: ${SUPPORT_PHONE}`,
         messages
       })
@@ -117,20 +115,21 @@ Your rules:
         String(now.getDate()).padStart(2, '0') +
         String(now.getHours()).padStart(2, '0') +
         String(now.getMinutes()).padStart(2, '0');
-      logToSheet(newEmail, 'Session in progress', false, newTicket, 'Open');
+      logToSheet(newEmail, 'Session in progress', false, newTicket);
     }
 
-    // If Jeff included SEND_RECAP tag generate summary and send email
-    if (rawReply.includes('SEND_RECAP') && capturedEmail) {
-      const summary = await generateSummary(messages);
-      await logToSheet(capturedEmail, summary, true, ticketNumber, 'Resolved');
+    // After 3+ messages update summary
+    if (emailCaptured && capturedEmail && hasRealConversation) {
+      const allMessages = [...messages, { role: 'assistant', content: rawReply }];
+      generateSummary(allMessages).then(summary => {
+        logToSheet(capturedEmail, summary, false, ticketNumber);
+      });
     }
 
     if (data.content?.[0]?.text) {
       data.content[0].text = data.content[0].text
         .replace(/EMAIL_CAPTURED_NOEMAIL:\[?[^\]\n]+\]?\n?/g, '')
         .replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '')
-        .replace(/SEND_RECAP\n?/g, '')
         .trim();
     }
 

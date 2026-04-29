@@ -19,7 +19,7 @@ async function sendNotification() {
   });
 }
 
-async function generateSummary(messages, status) {
+async function generateSummary(messages) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -37,11 +37,6 @@ async function generateSummary(messages, status) {
 🔧 Issue: [one line]
 ✅ Fixed: [one line]
 📞 Next step: [one line]
-
-If the conversation has not gotten to a real tech issue yet, just write:
-🔧 Issue: Not yet described
-✅ Fixed: N/A
-📞 Next step: Awaiting user's issue
 
 No dashes, no asterisks, no extra text. Just the 3 lines. Be brief.
 
@@ -78,8 +73,7 @@ export default async function handler(req, res) {
     // Handle ticket close, still having issues, or timeout
     if ((closeTicket || stillIssues || timedOut) && capturedEmail) {
       const status = closeTicket ? 'Resolved' : stillIssues ? 'Needs Follow Up' : 'Session Timed Out';
-      const allMessages = [...messages];
-      generateSummary(allMessages, status).then(summary => {
+      generateSummary(messages).then(summary => {
         logToSheet(capturedEmail, summary, true, ticketNumber, status);
       });
       return res.status(200).json({ ticketClosed: true, status });
@@ -115,18 +109,18 @@ Your rules:
     const data = await response.json();
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
 
-   // First message — capture email and log initial row to sheet WITHOUT summary
-const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
-if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
-  const newEmail = emailMatch[1];
-  const now = new Date();
-  const newTicket = 'PT-' + now.getFullYear().toString().slice(-2) +
-    String(now.getMonth() + 1).padStart(2, '0') +
-    String(now.getDate()).padStart(2, '0') +
-    String(now.getHours()).padStart(2, '0') +
-    String(now.getMinutes()).padStart(2, '0');
-  logToSheet(newEmail, 'Session in progress', false, newTicket, 'Open');
-}
+    // First message — log email and ticket to sheet with placeholder summary
+    const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
+    if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
+      const newEmail = emailMatch[1];
+      const now = new Date();
+      const newTicket = 'PT-' + now.getFullYear().toString().slice(-2) +
+        String(now.getMonth() + 1).padStart(2, '0') +
+        String(now.getDate()).padStart(2, '0') +
+        String(now.getHours()).padStart(2, '0') +
+        String(now.getMinutes()).padStart(2, '0');
+      logToSheet(newEmail, 'Session in progress', false, newTicket, 'Open');
+    }
 
     if (data.content?.[0]?.text) {
       data.content[0].text = data.content[0].text

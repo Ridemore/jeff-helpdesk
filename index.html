@@ -93,6 +93,52 @@
   let capturedEmail = '';
   let ticketNumber = '';
   let issueSent = false;
+  let firstUpdateTimer = null;
+  let inactivityTimer = null;
+
+  function clearTimers() {
+    if (firstUpdateTimer) clearTimeout(firstUpdateTimer);
+    if (inactivityTimer) clearTimeout(inactivityTimer);
+  }
+
+  async function updateSheet(sendEmail) {
+    if (!emailCaptured || !capturedEmail) return;
+    await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: history,
+        emailCaptured,
+        capturedEmail,
+        ticketNumber,
+        updateSheet: !sendEmail,
+        sendFinal: sendEmail
+      })
+    });
+  }
+
+  function startTimers() {
+    clearTimers();
+
+    // After 5 minutes — save summary to sheet, no email
+    firstUpdateTimer = setTimeout(() => {
+      updateSheet(false);
+    }, 5 * 60 * 1000);
+
+    // After 6 minutes of inactivity — final summary + send email
+    inactivityTimer = setTimeout(() => {
+      updateSheet(true);
+    }, 6 * 60 * 1000);
+  }
+
+  function resetInactivityTimer() {
+    if (inactivityTimer) clearTimeout(inactivityTimer);
+    if (emailCaptured && capturedEmail) {
+      inactivityTimer = setTimeout(() => {
+        updateSheet(true);
+      }, 6 * 60 * 1000);
+    }
+  }
 
   inputEl.addEventListener('focus', () => {
     setTimeout(() => {
@@ -170,7 +216,6 @@
       const reply = rawReply
         .replace(/EMAIL_CAPTURED_NOEMAIL:\[?[^\]\n]+\]?\n?/g, '')
         .replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '')
-        .replace(/SEND_RECAP\n?/g, '')
         .trim();
 
       if (rawReply.match(/EMAIL_CAPTURED:/)) {
@@ -184,8 +229,10 @@
           String(now.getHours()).padStart(2, '0') +
           String(now.getMinutes()).padStart(2, '0');
         inputEl.placeholder = 'How can I be of service...';
+        startTimers();
       }
 
+      resetInactivityTimer();
       history.push({ role: 'assistant', content: reply });
       removeTyping();
       addMessage('bot', reply);

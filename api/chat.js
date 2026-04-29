@@ -109,16 +109,14 @@ Your rules:
       })
     });
 
-    const data = await response.json();
-    const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
-
-    const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
-    if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
-      const capturedEmail = emailMatch[1];
-      generateSummary(messages).then(summary => {
-        logToSheet(capturedEmail, summary, true);
-      });
-    }
+const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
+if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
+  const capturedEmail = emailMatch[1];
+  const allMessages = [...messages, { role: 'assistant', content: rawReply }];
+  generateSummary(allMessages).then(summary => {
+    logToSheet(capturedEmail, summary, true);
+  });
+}
 
     const noEmailMatch = rawReply.match(/EMAIL_CAPTURED_NOEMAIL:\[?([^\]\n]+)\]?/);
     if (noEmailMatch) {

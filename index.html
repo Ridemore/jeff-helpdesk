@@ -34,10 +34,6 @@
     #chips { padding: 10px 16px 8px; display: flex; flex-wrap: wrap; gap: 6px; background: #ffffff; border-top: 0.5px solid #e0e0e0; flex-shrink: 0; }
     .chip { font-size: 12px; padding: 5px 12px; border-radius: 20px; border: 0.5px solid #0071e3; color: #0071e3; background: transparent; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; }
     .chip:hover { background: rgba(0,113,227,0.07); }
-    #close-buttons { padding: 10px 16px 8px; display: none; flex-wrap: wrap; gap: 6px; background: #ffffff; border-top: 0.5px solid #e0e0e0; flex-shrink: 0; }
-    .close-btn { font-size: 12px; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; }
-    .close-btn.primary { background: #0071e3; color: white; border: 0.5px solid #0071e3; }
-    .close-btn.secondary { background: transparent; color: #000; border: 0.5px solid #ccc; }
     #input-row { padding: 10px 14px 12px; display: flex; gap: 8px; align-items: center; background: #ffffff; border-top: 0.5px solid #e0e0e0; flex-shrink: 0; width: 100%; }
     #user-input { flex: 1; min-width: 0; resize: none; border: 0.5px solid #ccc; border-radius: 22px; padding: 9px 16px; font-size: 14px; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; line-height: 1.4; background: #f2f2f7; color: #000; outline: none; height: 38px; overflow-y: auto; }
     #user-input:focus { border-color: #0071e3; }
@@ -75,10 +71,6 @@
     <div class="chip" onclick="sendChip(this)">Reset my password</div>
     <div class="chip" onclick="checkPhishing()">Check if email is fake</div>
   </div>
-  <div id="close-buttons">
-    <button class="close-btn primary" onclick="handleClose('resolved')">All done, close ticket</button>
-    <button class="close-btn secondary" onclick="handleClose('issues')">Still having issues</button>
-  </div>
   <div id="input-row">
     <textarea id="user-input" placeholder="Type your email to get started..." rows="1"></textarea>
     <button id="send-btn" onclick="sendMessage()">
@@ -95,50 +87,33 @@
   const inputEl = document.getElementById('user-input');
   const sendBtn = document.getElementById('send-btn');
   const chipsEl = document.getElementById('chips');
-  const closeButtonsEl = document.getElementById('close-buttons');
   let history = [];
   let loading = false;
   let emailCaptured = false;
   let capturedEmail = '';
   let ticketNumber = '';
   let issueSent = false;
-  let sessionTimer = null;
+  let summaryTimer = null;
 
-  function resetSessionTimer() {
-    if (sessionTimer) clearTimeout(sessionTimer);
-    if (emailCaptured && capturedEmail) {
-      sessionTimer = setTimeout(() => {
-        handleClose('timeout');
-      }, 45 * 60 * 1000);
-    }
-  }
-
-  async function handleClose(reason) {
-    if (sessionTimer) clearTimeout(sessionTimer);
-    closeButtonsEl.style.display = 'none';
-    inputEl.disabled = true;
-    sendBtn.disabled = true;
-
-    const message = reason === 'resolved'
-      ? "Ticket closed! Check your email for a summary of what we covered. Hope everything works great!"
-      : reason === 'issues'
-      ? "No problem — I'll flag this for our team to follow up. Check your email for a summary of what we tried."
-      : "Your session has timed out. Check your email for a summary of your support session.";
-
-    addMessage('bot', message);
-
-    await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: history,
-        emailCaptured,
-        capturedEmail,
-        ticketNumber,
-        isClosing: true,
-        closeReason: reason
-      })
-    });
+  // Update summary in sheet every 15 minutes silently
+  function startSummaryTimer() {
+    if (summaryTimer) clearInterval(summaryTimer);
+    summaryTimer = setInterval(async () => {
+      if (emailCaptured && capturedEmail && history.length > 2) {
+        await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: history,
+            emailCaptured,
+            capturedEmail,
+            ticketNumber,
+            sendRecap: false,
+            updateSummary: true
+          })
+        });
+      }
+    }, 15 * 60 * 1000);
   }
 
   inputEl.addEventListener('focus', () => {
@@ -215,11 +190,10 @@
       const data = await res.json();
       const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
 
-      const showClose = rawReply.includes('SHOW_CLOSE_BUTTONS');
       const reply = rawReply
         .replace(/EMAIL_CAPTURED_NOEMAIL:\[?[^\]\n]+\]?\n?/g, '')
         .replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '')
-        .replace(/SHOW_CLOSE_BUTTONS\n?/g, '')
+        .replace(/SEND_RECAP\n?/g, '')
         .trim();
 
       if (rawReply.match(/EMAIL_CAPTURED:/)) {
@@ -233,15 +207,9 @@
           String(now.getHours()).padStart(2, '0') +
           String(now.getMinutes()).padStart(2, '0');
         inputEl.placeholder = 'How can I be of service...';
-        resetSessionTimer();
+        startSummaryTimer();
       }
 
-      if (showClose) {
-        closeButtonsEl.style.display = 'flex';
-        chipsEl.style.display = 'none';
-      }
-
-      resetSessionTimer();
       history.push({ role: 'assistant', content: reply });
       removeTyping();
       addMessage('bot', reply);

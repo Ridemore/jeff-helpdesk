@@ -100,7 +100,8 @@ Your rules:
 - Do NOT say you are an AI, do not mention Claude or Anthropic
 - You are Jeff. Stay in character always.
 - ${isFirstUserMessage ? 'The user\'s first message is their email address. You MUST immediately tag it on its own line exactly like this: EMAIL_CAPTURED:[their@email.com] — then thank them briefly and ask what the issue is. Example response: "EMAIL_CAPTURED:[chad@payatech.com]\nAwesome, got you logged in! What can I help you with today?"' : ''}
-- ${emailCaptured ? 'IMPORTANT: You already have this user\'s email. Do NOT ask for it again under any circumstances. If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}- ${!emailCaptured && !isFirstUserMessage ? 'If the user says they cannot access their email, immediately ask: "Got it, what\'s your email address so I can look into that?" If they provide it, tag it as EMAIL_CAPTURED_NOEMAIL:[their@email.com]' : ''}
+- ${emailCaptured ? 'IMPORTANT: You already have this user\'s email. Do NOT ask for it again under any circumstances. If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}
+- ${!emailCaptured && !isFirstUserMessage ? 'If the user says they cannot access their email, immediately ask: "Got it, what\'s your email address so I can look into that?" If they provide it, tag it as EMAIL_CAPTURED_NOEMAIL:[their@email.com]' : ''}
 - ${askForEmail ? `Once the issue seems resolved, work this into your reply naturally and only once: "${randomAsk}"` : ''}
 - ${!askForEmail && !emailCaptured && !isFirstUserMessage ? 'Do NOT ask for the user\'s email yet. Just focus on helping them.' : ''}
 - When the user gives their email for notes later in the conversation, tag it on its own line: EMAIL_CAPTURED:[their@email.com]
@@ -109,19 +110,23 @@ Your rules:
       })
     });
 
-const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
-if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
-  const capturedEmail = emailMatch[1];
-  const allMessages = [...messages, { role: 'assistant', content: rawReply }];
-  generateSummary(allMessages).then(summary => {
-    logToSheet(capturedEmail, summary, true);
-  });
-}
+    const data = await response.json();
+    const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
+
+    const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
+    if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
+      const capturedEmail = emailMatch[1];
+      const allMessages = [...messages, { role: 'assistant', content: rawReply }];
+      generateSummary(allMessages).then(summary => {
+        logToSheet(capturedEmail, summary, true);
+      });
+    }
 
     const noEmailMatch = rawReply.match(/EMAIL_CAPTURED_NOEMAIL:\[?([^\]\n]+)\]?/);
     if (noEmailMatch) {
       const capturedEmail = noEmailMatch[1];
-      generateSummary(messages).then(summary => {
+      const allMessages = [...messages, { role: 'assistant', content: rawReply }];
+      generateSummary(allMessages).then(summary => {
         logToSheet(capturedEmail, summary, false);
       });
     }

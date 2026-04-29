@@ -156,8 +156,11 @@ body: JSON.stringify({ messages: history, isFirstMessage: history.length === 1, 
         .replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '')
         .trim();
 
-      if (rawReply.match(/EMAIL_CAPTURED:/)) emailCaptured = true;
-
+if (rawReply.match(/EMAIL_CAPTURED:/)) {
+  emailCaptured = true;
+  const match = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
+  if (match) capturedEmail = match[1];
+}
       history.push({ role: 'assistant', content: reply });
       removeTyping();
       addMessage('bot', reply);

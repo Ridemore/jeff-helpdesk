@@ -19,7 +19,7 @@ async function sendNotification() {
   });
 }
 
-async function generateSummary(messages) {
+async function generateSummary(messages, status) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -55,18 +55,18 @@ ${messages.map(m => `${m.role}: ${m.content}`).join('\n')}`
   return data.content?.[0]?.text || 'No summary available';
 }
 
-async function logToSheet(email, summary, sendEmail, ticketNumber) {
+async function logToSheet(email, summary, sendEmail, ticketNumber, status) {
   await fetch(SHEET_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, summary, sendEmail, ticketNumber })
+    body: JSON.stringify({ email, summary, sendEmail, ticketNumber, status })
   });
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   try {
-    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber, emailSent } = req.body;
+    const { messages, isFirstMessage, emailCaptured, capturedEmail, ticketNumber, closeTicket, stillIssues, timedOut } = req.body;
 
     if (isFirstMessage) {
       sendNotification();
@@ -74,7 +74,16 @@ export default async function handler(req, res) {
 
     const userMessageCount = messages.filter(m => m.role === 'user').length;
     const isFirstUserMessage = userMessageCount === 1;
-    const hasRealConversation = userMessageCount >= 3;
+
+    // Handle ticket close, still having issues, or timeout
+    if ((closeTicket || stillIssues || timedOut) && capturedEmail) {
+      const status = closeTicket ? 'Resolved' : stillIssues ? 'Needs Follow Up' : 'Session Timed Out';
+      const allMessages = [...messages];
+      generateSummary(allMessages, status).then(summary => {
+        logToSheet(capturedEmail, summary, true, ticketNumber, status);
+      });
+      return res.status(200).json({ ticketClosed: true, status });
+    }
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -97,6 +106,7 @@ Your rules:
 - ${isFirstUserMessage ? 'The user\'s first message is their email address. You MUST immediately tag it on its own line exactly like this: EMAIL_CAPTURED:[their@email.com] — then thank them briefly and ask what the issue is. Example: "EMAIL_CAPTURED:[chad@payatech.com]\nAwesome, got your ticket open! What can I help you with today?"' : ''}
 - ${emailCaptured ? 'IMPORTANT: You already have this user\'s email. Do NOT ask for it again under any circumstances. If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}
 - ${!emailCaptured && !isFirstUserMessage ? 'If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}
+- When the issue appears resolved, end your response with: SHOW_CLOSE_BUTTONS
 - If the user needs to speak to a real person, give them this number: ${SUPPORT_PHONE}`,
         messages
       })
@@ -115,17 +125,8 @@ Your rules:
         String(now.getDate()).padStart(2, '0') +
         String(now.getHours()).padStart(2, '0') +
         String(now.getMinutes()).padStart(2, '0');
-      const allMessages = [...messages, { role: 'assistant', content: rawReply }];
-      generateSummary(allMessages).then(summary => {
-        logToSheet(newEmail, summary, false, newTicket);
-      });
-    }
-
-    // After 3+ messages update summary and send recap email ONCE
-    if (emailCaptured && capturedEmail && hasRealConversation && !emailSent) {
-      const allMessages = [...messages, { role: 'assistant', content: rawReply }];
-      generateSummary(allMessages).then(summary => {
-        logToSheet(capturedEmail, summary, true, ticketNumber);
+      generateSummary([...messages], 'Open').then(summary => {
+        logToSheet(newEmail, summary, false, newTicket, 'Open');
       });
     }
 

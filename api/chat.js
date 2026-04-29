@@ -71,7 +71,7 @@ async function logToSheet(email, summary, sendEmail) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   try {
-    const { messages, isFirstMessage, emailCaptured } = req.body;
+    const { messages, isFirstMessage, emailCaptured, capturedEmail } = req.body;
 
     if (isFirstMessage) {
       sendNotification();
@@ -80,6 +80,7 @@ export default async function handler(req, res) {
     const userMessageCount = messages.filter(m => m.role === 'user').length;
     const askForEmail = !emailCaptured && userMessageCount >= 3;
     const randomAsk = EMAIL_ASKS[Math.floor(Math.random() * EMAIL_ASKS.length)];
+    const hasRealConversation = userMessageCount >= 4;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -103,29 +104,49 @@ Your rules:
 - ${emailCaptured ? 'IMPORTANT: You already have this user\'s email. Do NOT ask for it again under any circumstances.' : ''}
 - ${!askForEmail && !emailCaptured ? 'Do NOT ask for the user\'s email yet. Just focus on helping them.' : ''}
 - When the user gives their email for notes, respond with exactly this on its own line: EMAIL_CAPTURED:[their@email.com]
+- When the conversation is clearly wrapping up and the issue is resolved, end your response with exactly: CONVERSATION_COMPLETE on its own line.
 - If the user needs to speak to a real person, give them this number: ${SUPPORT_PHONE}`,
         messages
       })
     });
 
-    const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
-if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
-  const capturedEmail = emailMatch[1];
-  const allMessages = [...messages, { role: 'assistant', content: rawReply }];
-  if (allMessages.filter(m => m.role === 'user').length >= 4) {
-    generateSummary(allMessages).then(summary => {
-      logToSheet(capturedEmail, summary, true);
-    });
-  } else {
-    logToSheet(capturedEmail, 'Session in progress', false);
-  }
-}
+    const data = await response.json();
+    const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
+    const allMessages = [...messages, { role: 'assistant', content: rawReply }];
 
+    // Email captured — log to sheet
+    const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
+    if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
+      const newEmail = emailMatch[1];
+      if (hasRealConversation) {
+        generateSummary(allMessages).then(summary => {
+          logToSheet(newEmail, summary, true);
+        });
+      } else {
+        logToSheet(newEmail, 'Session in progress', false);
+      }
+    }
+
+    // No email match but we have email — update summary silently
+    if (!emailMatch && emailCaptured && capturedEmail && hasRealConversation) {
+      generateSummary(allMessages).then(summary => {
+        logToSheet(capturedEmail, summary, false);
+      });
+    }
+
+    // Conversation complete — send final summary and email
+    if (rawReply.includes('CONVERSATION_COMPLETE') && emailCaptured && capturedEmail) {
+      generateSummary(allMessages).then(summary => {
+        logToSheet(capturedEmail, summary, true);
+      });
+    }
+
+    // No email match for troubleshooting email
     const noEmailMatch = rawReply.match(/EMAIL_CAPTURED_NOEMAIL:\[?([^\]\n]+)\]?/);
     if (noEmailMatch) {
-      const capturedEmail = noEmailMatch[1];
-      generateSummary(messages).then(summary => {
-        logToSheet(capturedEmail, summary, false);
+      const newEmail = noEmailMatch[1];
+      generateSummary(allMessages).then(summary => {
+        logToSheet(newEmail, summary, false);
       });
     }
 
@@ -133,6 +154,7 @@ if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
       data.content[0].text = data.content[0].text
         .replace(/EMAIL_CAPTURED_NOEMAIL:\[?[^\]\n]+\]?\n?/g, '')
         .replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '')
+        .replace(/CONVERSATION_COMPLETE\n?/g, '')
         .trim();
     }
 

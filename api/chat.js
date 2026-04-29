@@ -115,20 +115,18 @@ Your rules:
     const data = await response.json();
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
 
-    // First message — capture email and log initial row to sheet
-    const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
-    if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
-      const newEmail = emailMatch[1];
-      const now = new Date();
-      const newTicket = 'PT-' + now.getFullYear().toString().slice(-2) +
-        String(now.getMonth() + 1).padStart(2, '0') +
-        String(now.getDate()).padStart(2, '0') +
-        String(now.getHours()).padStart(2, '0') +
-        String(now.getMinutes()).padStart(2, '0');
-      generateSummary([...messages], 'Open').then(summary => {
-        logToSheet(newEmail, summary, false, newTicket, 'Open');
-      });
-    }
+   // First message — capture email and log initial row to sheet WITHOUT summary
+const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
+if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
+  const newEmail = emailMatch[1];
+  const now = new Date();
+  const newTicket = 'PT-' + now.getFullYear().toString().slice(-2) +
+    String(now.getMonth() + 1).padStart(2, '0') +
+    String(now.getDate()).padStart(2, '0') +
+    String(now.getHours()).padStart(2, '0') +
+    String(now.getMinutes()).padStart(2, '0');
+  logToSheet(newEmail, 'Session in progress', false, newTicket, 'Open');
+}
 
     if (data.content?.[0]?.text) {
       data.content[0].text = data.content[0].text

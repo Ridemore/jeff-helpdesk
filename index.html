@@ -34,6 +34,12 @@
     #chips { padding: 10px 16px 8px; display: flex; flex-wrap: wrap; gap: 6px; background: #ffffff; border-top: 0.5px solid #e0e0e0; flex-shrink: 0; }
     .chip { font-size: 12px; padding: 5px 12px; border-radius: 20px; border: 0.5px solid #0071e3; color: #0071e3; background: transparent; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; }
     .chip:hover { background: rgba(0,113,227,0.07); }
+    #yn-chips { padding: 6px 16px 10px; display: none; flex-wrap: wrap; gap: 6px; background: #ffffff; flex-shrink: 0; }
+    .yn-chip { font-size: 13px; padding: 6px 20px; border-radius: 20px; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; font-weight: 500; }
+    .yn-chip.yes { border: 0.5px solid #34c759; color: #34c759; background: transparent; }
+    .yn-chip.yes:hover { background: rgba(52,199,89,0.08); }
+    .yn-chip.no { border: 0.5px solid #888; color: #888; background: transparent; }
+    .yn-chip.no:hover { background: rgba(0,0,0,0.05); }
     #input-row { padding: 10px 14px 12px; display: flex; gap: 8px; align-items: center; background: #ffffff; border-top: 0.5px solid #e0e0e0; flex-shrink: 0; width: 100%; }
     #user-input { flex: 1; min-width: 0; resize: none; border: 0.5px solid #ccc; border-radius: 22px; padding: 9px 16px; font-size: 14px; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; line-height: 1.4; background: #f2f2f7; color: #000; outline: none; height: 38px; overflow-y: auto; }
     #user-input:focus { border-color: #0071e3; }
@@ -67,9 +73,13 @@
     <div class="chip" onclick="sendChip(this)">Wi-Fi keeps dropping</div>
     <div class="chip" onclick="sendChip(this)">Printer won't connect</div>
     <div class="chip" onclick="sendChip(this)">Computer is slow</div>
-    <div class="chip" onclick="sendChip(this)">Can't access email</div>
+    <div class="chip" onclick="sendChip(this, 'email')">Can't access email</div>
     <div class="chip" onclick="sendChip(this)">Reset my password</div>
     <div class="chip" onclick="checkPhishing()">Check if email is fake</div>
+  </div>
+  <div id="yn-chips">
+    <button class="yn-chip yes" onclick="answerSummary(true)">Yes please!</button>
+    <button class="yn-chip no" onclick="answerSummary(false)">No thanks</button>
   </div>
   <div id="input-row">
     <textarea id="user-input" placeholder="Type your email to get started..." rows="1"></textarea>
@@ -87,15 +97,16 @@
   const inputEl = document.getElementById('user-input');
   const sendBtn = document.getElementById('send-btn');
   const chipsEl = document.getElementById('chips');
+  const ynChipsEl = document.getElementById('yn-chips');
   let history = [];
   let loading = false;
   let emailCaptured = false;
+  let capturedEmailAddress = '';
   let issueSent = false;
+  let awaitingSummaryResponse = false;
 
   inputEl.addEventListener('focus', () => {
-    setTimeout(() => {
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-    }, 300);
+    setTimeout(() => { messagesEl.scrollTop = messagesEl.scrollHeight; }, 300);
   });
 
   function addMessage(role, text) {
@@ -120,9 +131,46 @@
     if (el) el.remove();
   }
 
-  function sendChip(el) {
+  function showYesNo() {
+    ynChipsEl.style.display = 'flex';
+    awaitingSummaryResponse = true;
+  }
+
+  function hideYesNo() {
+    ynChipsEl.style.display = 'none';
+    awaitingSummaryResponse = false;
+  }
+
+  function answerSummary(yes) {
+    hideYesNo();
+    if (yes) {
+      addMessage('user', 'Yes please!');
+      history.push({ role: 'user', content: 'Yes please!' });
+      // If email already captured, just confirm — backend handles it
+      sendMessageToAPI();
+    } else {
+      addMessage('user', 'No thanks');
+      history.push({ role: 'user', content: 'No thanks' });
+      sendMessageToAPI();
+    }
+  }
+
+  function sendChip(el, type) {
     chipsEl.style.display = 'none';
     issueSent = true;
+
+    // "Can't access email" special handling
+    if (type === 'email' && emailCaptured && capturedEmailAddress) {
+      showTyping();
+      setTimeout(() => {
+        removeTyping();
+        const msg = `Is the issue with ${capturedEmailAddress}?`;
+        addMessage('bot', msg);
+        history.push({ role: 'assistant', content: msg });
+      }, 1200);
+      return;
+    }
+
     inputEl.value = el.textContent;
     sendMessage();
   }
@@ -137,47 +185,66 @@
     }, 3500);
   }
 
-  async function sendMessage() {
-    const text = inputEl.value.trim();
-    if (!text || loading) return;
-
-    // Only hide chips if email is already captured and issue not yet sent
-    if (emailCaptured && !issueSent) {
-      chipsEl.style.display = 'none';
-      issueSent = true;
-    }
-
-    addMessage('user', text);
-    history.push({ role: 'user', content: text });
-    inputEl.value = '';
+  async function sendMessageToAPI() {
     loading = true; sendBtn.disabled = true;
     showTyping();
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history, isFirstMessage: history.length === 1, emailCaptured })
+        body: JSON.stringify({ messages: history, isFirstMessage: history.length === 1, emailCaptured, capturedEmailAddress })
       });
       const data = await res.json();
       const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
       const reply = rawReply
         .replace(/EMAIL_CAPTURED_NOEMAIL:\[?[^\]\n]+\]?\n?/g, '')
         .replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '')
+        .replace(/SHOW_YES_NO\n?/g, '')
         .trim();
 
       if (rawReply.match(/EMAIL_CAPTURED:/)) {
         emailCaptured = true;
+        const match = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
+        if (match) capturedEmailAddress = match[1].trim();
         inputEl.placeholder = 'How can I be of service...';
+      }
+
+      if (rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
+        emailCaptured = true;
+        const match = rawReply.match(/EMAIL_CAPTURED_NOEMAIL:\[?([^\]\n]+)\]?/);
+        if (match) capturedEmailAddress = match[1].trim();
       }
 
       history.push({ role: 'assistant', content: reply });
       removeTyping();
       addMessage('bot', reply);
+
+      // Show yes/no buttons if backend signals it
+      if (rawReply.includes('SHOW_YES_NO')) {
+        showYesNo();
+      }
+
     } catch(e) {
       removeTyping();
       addMessage('bot', "Hmm, something went wrong. Give it another shot or call us directly.");
     }
     loading = false; sendBtn.disabled = false;
+  }
+
+  async function sendMessage() {
+    const text = inputEl.value.trim();
+    if (!text || loading) return;
+
+    if (emailCaptured && !issueSent) {
+      chipsEl.style.display = 'none';
+      issueSent = true;
+    }
+
+    hideYesNo();
+    addMessage('user', text);
+    history.push({ role: 'user', content: text });
+    inputEl.value = '';
+    await sendMessageToAPI();
   }
 
   inputEl.addEventListener('keydown', e => {

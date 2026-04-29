@@ -91,8 +91,7 @@ Your rules:
 - ${isFirstUserMessage ? 'The user\'s first message is their email address. You MUST immediately tag it on its own line exactly like this: EMAIL_CAPTURED:[their@email.com] — then thank them briefly and ask what the issue is. Example: "EMAIL_CAPTURED:[chad@payatech.com]\nAwesome, got your ticket open! What can I help you with today?"' : ''}
 - ${emailCaptured ? 'IMPORTANT: You already have this user\'s email. Do NOT ask for it again under any circumstances. If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}
 - ${!emailCaptured && !isFirstUserMessage ? 'If the user says they cannot access their email, confirm by asking: "Is it the email you gave me that you\'re having trouble with, or a different one?" Then help them troubleshoot.' : ''}
-- When the issue is clearly resolved and the conversation is wrapping up, end your response with exactly: CONVERSATION_COMPLETE on its own line.
-- If the user needs to speak to a real person, give them this number: ${SUPPORT_PHONE}`,
+- When you say anything like "you're all set", "glad that worked", "happy to help", "let me know if anything else comes up", or any closing phrase, you MUST add CONVERSATION_COMPLETE on its own line at the very end of your response. No exceptions.- If the user needs to speak to a real person, give them this number: ${SUPPORT_PHONE}`,
         messages
       })
     });

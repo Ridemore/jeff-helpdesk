@@ -135,24 +135,18 @@
   function showYesNo() { ynChipsEl.style.display = 'flex'; }
   function hideYesNo() { ynChipsEl.style.display = 'none'; }
 
-  // Handle the email submission locally — never send to the AI
   function handleEmailCapture(email) {
     emailCaptured = true;
     capturedEmailAddress = email;
     inputEl.placeholder = 'How can I be of service...';
-
-    // Add the email exchange to history so the AI has context
     history.push({ role: 'user', content: email });
-    history.push({ role: 'assistant', content: "Got your ticket open! What can I help you with today?" });
-
+    history.push({ role: 'assistant', content: "Awesome, got your ticket open! What can I help you with today?" });
     addMessage('user', email);
     showTyping();
     setTimeout(() => {
       removeTyping();
-      addMessage('bot', "Got your ticket open! What can I help you with today?");
+      addMessage('bot', "Awesome, got your ticket open! What can I help you with today?");
     }, 900);
-
-    // Fire notification to Chad
     fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -178,22 +172,16 @@
   function sendChip(el, type) {
     chipsEl.style.display = 'none';
     issueSent = true;
-
-    // "Can't access email" chip — if email already on file, ask if it's that one
-    if (type === 'email') {
-      if (emailCaptured && capturedEmailAddress) {
-        showTyping();
-        setTimeout(() => {
-          removeTyping();
-          const msg = `Is the issue with ${capturedEmailAddress}?`;
-          addMessage('bot', msg);
-          history.push({ role: 'assistant', content: msg });
-        }, 1200);
-        return;
-      }
-      // No email on file yet — fall through and let the AI ask
+    if (type === 'email' && emailCaptured && capturedEmailAddress) {
+      showTyping();
+      setTimeout(() => {
+        removeTyping();
+        const msg = `Is the issue with ${capturedEmailAddress}?`;
+        addMessage('bot', msg);
+        history.push({ role: 'assistant', content: msg });
+      }, 1200);
+      return;
     }
-
     inputEl.value = el.textContent;
     sendMessage();
   }
@@ -252,13 +240,11 @@
     const text = inputEl.value.trim();
     if (!text || loading) return;
 
-    // ---- INTERCEPT: first thing sent is always the email ----
     if (!emailCaptured) {
       inputEl.value = '';
       handleEmailCapture(text);
       return;
     }
-    // --------------------------------------------------------
 
     if (!issueSent) {
       chipsEl.style.display = 'none';

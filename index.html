@@ -35,7 +35,7 @@
     .chip { font-size: 12px; padding: 5px 12px; border-radius: 20px; border: 0.5px solid #0071e3; color: #0071e3; background: transparent; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; }
     .chip:hover { background: rgba(0,113,227,0.07); }
     #yn-chips { padding: 6px 16px 10px; display: none; flex-wrap: wrap; gap: 6px; background: #ffffff; flex-shrink: 0; }
-    .yn-chip { font-size: 13px; padding: 6px 20px; border-radius: 20px; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; font-weight: 500; }
+    .yn-chip { font-size: 13px; padding: 6px 22px; border-radius: 20px; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; font-weight: 500; border: none; }
     .yn-chip.yes { border: 0.5px solid #34c759; color: #34c759; background: transparent; }
     .yn-chip.yes:hover { background: rgba(52,199,89,0.08); }
     .yn-chip.no { border: 0.5px solid #888; color: #888; background: transparent; }
@@ -98,12 +98,13 @@
   const sendBtn = document.getElementById('send-btn');
   const chipsEl = document.getElementById('chips');
   const ynChipsEl = document.getElementById('yn-chips');
+
   let history = [];
   let loading = false;
   let emailCaptured = false;
   let capturedEmailAddress = '';
   let issueSent = false;
-  let awaitingSummaryResponse = false;
+  let summaryOffered = false;
 
   inputEl.addEventListener('focus', () => {
     setTimeout(() => { messagesEl.scrollTop = messagesEl.scrollHeight; }, 300);
@@ -133,33 +134,25 @@
 
   function showYesNo() {
     ynChipsEl.style.display = 'flex';
-    awaitingSummaryResponse = true;
   }
 
   function hideYesNo() {
     ynChipsEl.style.display = 'none';
-    awaitingSummaryResponse = false;
   }
 
   function answerSummary(yes) {
     hideYesNo();
-    if (yes) {
-      addMessage('user', 'Yes please!');
-      history.push({ role: 'user', content: 'Yes please!' });
-      // If email already captured, just confirm — backend handles it
-      sendMessageToAPI();
-    } else {
-      addMessage('user', 'No thanks');
-      history.push({ role: 'user', content: 'No thanks' });
-      sendMessageToAPI();
-    }
+    const text = yes ? 'Yes please!' : 'No thanks';
+    addMessage('user', text);
+    history.push({ role: 'user', content: text });
+    callAPI(yes);
   }
 
   function sendChip(el, type) {
     chipsEl.style.display = 'none';
     issueSent = true;
 
-    // "Can't access email" special handling
+    // "Can't access email" — if email already captured, ask if it's that email
     if (type === 'email' && emailCaptured && capturedEmailAddress) {
       showTyping();
       setTimeout(() => {
@@ -185,42 +178,54 @@
     }, 3500);
   }
 
-  async function sendMessageToAPI() {
-    loading = true; sendBtn.disabled = true;
+  async function callAPI(saidYesToSummary = false) {
+    loading = true;
+    sendBtn.disabled = true;
     showTyping();
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history, isFirstMessage: history.length === 1, emailCaptured, capturedEmailAddress })
+        body: JSON.stringify({
+          messages: history,
+          isFirstMessage: history.length === 1,
+          emailCaptured,
+          capturedEmailAddress,
+          summaryOffered,
+          saidYesToSummary
+        })
       });
       const data = await res.json();
       const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
       const reply = rawReply
         .replace(/EMAIL_CAPTURED_NOEMAIL:\[?[^\]\n]+\]?\n?/g, '')
         .replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '')
-        .replace(/SHOW_YES_NO\n?/g, '')
         .trim();
 
+      // Update email state if just captured
       if (rawReply.match(/EMAIL_CAPTURED:/)) {
         emailCaptured = true;
         const match = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
         if (match) capturedEmailAddress = match[1].trim();
         inputEl.placeholder = 'How can I be of service...';
       }
-
       if (rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
         emailCaptured = true;
         const match = rawReply.match(/EMAIL_CAPTURED_NOEMAIL:\[?([^\]\n]+)\]?/);
         if (match) capturedEmailAddress = match[1].trim();
       }
 
+      // Track if summary has been offered
+      if (data.summaryOffered) {
+        summaryOffered = true;
+      }
+
       history.push({ role: 'assistant', content: reply });
       removeTyping();
       addMessage('bot', reply);
 
-      // Show yes/no buttons if backend signals it
-      if (rawReply.includes('SHOW_YES_NO')) {
+      // Show yes/no buttons if backend says to
+      if (data.showYesNo) {
         showYesNo();
       }
 
@@ -228,7 +233,8 @@
       removeTyping();
       addMessage('bot', "Hmm, something went wrong. Give it another shot or call us directly.");
     }
-    loading = false; sendBtn.disabled = false;
+    loading = false;
+    sendBtn.disabled = false;
   }
 
   async function sendMessage() {
@@ -244,7 +250,7 @@
     addMessage('user', text);
     history.push({ role: 'user', content: text });
     inputEl.value = '';
-    await sendMessageToAPI();
+    await callAPI();
   }
 
   inputEl.addEventListener('keydown', e => {

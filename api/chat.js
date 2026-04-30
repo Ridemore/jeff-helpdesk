@@ -21,6 +21,18 @@ const SUMMARY_ASKS = [
   "I can send you a recap of this whole chat. Want me to do that?"
 ];
 
+// Keywords that suggest the issue is resolved
+const RESOLVED_SIGNALS = [
+  'thank', 'thanks', 'got it', 'that worked', 'working now', 'fixed', 'all good',
+  'good now', 'were good', "we're good", 'perfect', 'great', 'awesome', 'appreciate',
+  'it works', 'it worked', 'solved', 'resolved', 'you rock', 'nice one', 'sorted'
+];
+
+function looksResolved(messages) {
+  const lastUserMsg = messages.filter(m => m.role === 'user').pop()?.content?.toLowerCase() || '';
+  return RESOLVED_SIGNALS.some(sig => lastUserMsg.includes(sig));
+}
+
 async function sendNotification() {
   await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -79,33 +91,33 @@ async function logToSheet(email, summary, sendEmail) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   try {
-    const { messages, isFirstMessage, emailCaptured, capturedEmailAddress } = req.body;
+    const { messages, isFirstMessage, emailCaptured, capturedEmailAddress, summaryOffered, saidYesToSummary } = req.body;
 
     if (isFirstMessage) {
       sendNotification();
     }
 
     const userMessageCount = messages.filter(m => m.role === 'user').length;
-
-    // Decide whether to ask for email or prompt for summary
-    const askForEmail = !emailCaptured && userMessageCount >= 3;
-    // Ask for summary confirmation (yes/no) when email is already captured and convo is winding down
-    const askForSummaryConfirm = emailCaptured && userMessageCount >= 3;
-
-    const randomEmailAsk = EMAIL_ASKS[Math.floor(Math.random() * EMAIL_ASKS.length)];
-    const randomSummaryAsk = SUMMARY_ASKS[Math.floor(Math.random() * SUMMARY_ASKS.length)];
-
-    // Check if the last user message is a yes/no to the summary offer
     const lastUserMsg = messages[messages.length - 1]?.content?.toLowerCase() || '';
-    const saidYes = lastUserMsg.includes('yes') || lastUserMsg.includes('please') || lastUserMsg === 'yes please!';
-    const saidNo = lastUserMsg.includes('no thanks') || lastUserMsg === 'no';
 
-    // If they said yes to summary and email is already captured, log it now
+    const saidYes = saidYesToSummary === true;
+    const saidNo = lastUserMsg === 'no thanks' || lastUserMsg === 'no';
+
+    // If user said yes to summary recap, log it now
     if (saidYes && emailCaptured && capturedEmailAddress) {
       generateSummary(messages).then(summary => {
         logToSheet(capturedEmailAddress, summary, true);
       });
     }
+
+    // Ask for email only if not captured, convo has depth, and issue looks resolved
+    const askForEmail = !emailCaptured && userMessageCount >= 3 && looksResolved(messages);
+
+    // Offer yes/no summary only if email captured, not yet offered, issue looks resolved
+    const offerSummary = emailCaptured && !summaryOffered && !saidYes && !saidNo && userMessageCount >= 3 && looksResolved(messages);
+
+    const randomEmailAsk = EMAIL_ASKS[Math.floor(Math.random() * EMAIL_ASKS.length)];
+    const randomSummaryAsk = SUMMARY_ASKS[Math.floor(Math.random() * SUMMARY_ASKS.length)];
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -118,24 +130,23 @@ export default async function handler(req, res) {
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 300,
         system: `You are Jeff, a friendly help desk technician at PAYATECH, a managed service provider. You talk directly with clients to help them fix tech issues.
+
 Your rules:
 - Keep responses short — 1 to 2 sentences max, or a numbered list of 2 to 3 steps if needed.
 - Never introduce yourself again after the first message.
 - When the user gives their email, just thank them briefly and ask what the issue is. Example: "Got it! What can I help you with today?"
-- Never dump a wall of text or cover every possible scenario
-- Sound like a real person texting, not a manual — casual, plain English, no jargon, no asterisks, no dashes
-- Do NOT say you are an AI, do not mention Claude or Anthropic
+- Never dump a wall of text or cover every possible scenario.
+- Sound like a real person texting, not a manual — casual, plain English, no jargon, no asterisks, no dashes.
+- Do NOT say you are an AI, do not mention Claude or Anthropic.
 - You are Jeff. Stay in character always.
-- If the user says they can't access their email AND you already have their email on file (${capturedEmailAddress ? `their email is ${capturedEmailAddress}` : 'no email on file yet'}), ask: "Is the issue with ${capturedEmailAddress || 'that email'}?" and tag it: EMAIL_CAPTURED_NOEMAIL:[${capturedEmailAddress || 'their@email.com'}]
-- If the user says they can't access their email and no email is on file, immediately ask: "Got it, what's your email address so I can look into that?"
-- ${askForEmail ? `Once the issue seems resolved, work this into your reply naturally and only once: "${randomEmailAsk}"` : ''}
-- ${askForSummaryConfirm && !saidYes && !saidNo ? `Once the issue seems resolved, add SHOW_YES_NO on its own line at the very end of your response, and work this in naturally: "${randomSummaryAsk}"` : ''}
-- ${saidYes && emailCaptured ? `The user said yes to the recap. Respond with something like "Perfect, I'll send that over to ${capturedEmailAddress} now. Hope that helps — reach out anytime!"` : ''}
-- ${saidNo ? `The user said no to the recap. Respond with something like "No worries! Hope everything's working now. Reach out anytime."` : ''}
-- ${emailCaptured ? 'IMPORTANT: You already have this user\'s email. Do NOT ask for it again under any circumstances.' : ''}
-- ${!askForEmail && !emailCaptured ? 'Do NOT ask for the user\'s email yet. Just focus on helping them.' : ''}
-- When the user gives their email for notes, respond with exactly this on its own line: EMAIL_CAPTURED:[their@email.com]
-- If the user needs to speak to a real person, give them this number: ${SUPPORT_PHONE}`,
+- CRITICAL: NEVER ask for the user's email address under any circumstances. ${emailCaptured ? `You already have their email: ${capturedEmailAddress}. Do not ask for it again.` : 'The first message already asked for their email. Do not ask again.'}
+- If the user says they can't access their email${capturedEmailAddress ? ` — their email on file is ${capturedEmailAddress} — ask: "Is the issue with ${capturedEmailAddress}?"` : ', ask what their email address is so you can look into it'}.
+- ${askForEmail ? `The issue appears resolved. Work this naturally into your reply: "${randomEmailAsk}"` : ''}
+- ${offerSummary ? `The issue appears resolved. Work this naturally into your reply: "${randomSummaryAsk}"` : ''}
+- ${saidYes && emailCaptured ? `The user said yes to the recap. Say: "Perfect, sending that over to ${capturedEmailAddress} now. Hope that helps — reach out anytime!"` : ''}
+- ${saidNo ? 'The user said no to the recap. Say: "No worries! Hope everything\'s sorted. Reach out anytime."' : ''}
+- When the user gives their email for notes, put this on its own line: EMAIL_CAPTURED:[their@email.com]
+- If the user needs a real person: ${SUPPORT_PHONE}`,
         messages
       })
     });
@@ -143,25 +154,25 @@ Your rules:
     const data = await response.json();
     const rawReply = data.content?.[0]?.text || "Sorry, something went wrong. Try again!";
 
-    // Handle email captured (wants recap)
+    // Handle EMAIL_CAPTURED tag
     const emailMatch = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
     if (emailMatch && !rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
-      const capturedEmail = emailMatch[1];
+      const captured = emailMatch[1].trim();
       generateSummary(messages).then(summary => {
-        logToSheet(capturedEmail, summary, true);
+        logToSheet(captured, summary, true);
       });
     }
 
-    // Handle email captured (no recap wanted / troubleshooting only)
+    // Handle EMAIL_CAPTURED_NOEMAIL tag
     const noEmailMatch = rawReply.match(/EMAIL_CAPTURED_NOEMAIL:\[?([^\]\n]+)\]?/);
     if (noEmailMatch) {
-      const capturedEmail = noEmailMatch[1];
+      const captured = noEmailMatch[1].trim();
       generateSummary(messages).then(summary => {
-        logToSheet(capturedEmail, summary, false);
+        logToSheet(captured, summary, false);
       });
     }
 
-    // Strip tags from the reply sent to the UI
+    // Strip all internal tags from the reply before sending to UI
     if (data.content?.[0]?.text) {
       data.content[0].text = data.content[0].text
         .replace(/EMAIL_CAPTURED_NOEMAIL:\[?[^\]\n]+\]?\n?/g, '')
@@ -170,8 +181,14 @@ Your rules:
     }
 
     const delay = Math.floor(Math.random() * 2000) + 2000;
+
+    // Backend controls the yes/no button signal — not the AI
     await new Promise(resolve => setTimeout(resolve, delay));
-    res.status(200).json(data);
+    res.status(200).json({
+      ...data,
+      showYesNo: offerSummary,
+      summaryOffered: summaryOffered || offerSummary
+    });
 
   } catch (err) {
     console.error('Handler error:', err);

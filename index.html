@@ -35,10 +35,10 @@
     .chip { font-size: 12px; padding: 5px 12px; border-radius: 20px; border: 0.5px solid #0071e3; color: #0071e3; background: transparent; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; }
     .chip:hover { background: rgba(0,113,227,0.07); }
     #yn-chips { padding: 6px 16px 10px; display: none; flex-wrap: wrap; gap: 6px; background: #ffffff; flex-shrink: 0; }
-    .yn-chip { font-size: 13px; padding: 6px 22px; border-radius: 20px; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; font-weight: 500; border: none; }
-    .yn-chip.yes { border: 0.5px solid #34c759; color: #34c759; background: transparent; }
+    .yn-chip { font-size: 13px; padding: 6px 22px; border-radius: 20px; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; font-weight: 500; background: transparent; }
+    .yn-chip.yes { border: 0.5px solid #34c759; color: #34c759; }
     .yn-chip.yes:hover { background: rgba(52,199,89,0.08); }
-    .yn-chip.no { border: 0.5px solid #888; color: #888; background: transparent; }
+    .yn-chip.no { border: 0.5px solid #888; color: #888; }
     .yn-chip.no:hover { background: rgba(0,0,0,0.05); }
     #input-row { padding: 10px 14px 12px; display: flex; gap: 8px; align-items: center; background: #ffffff; border-top: 0.5px solid #e0e0e0; flex-shrink: 0; width: 100%; }
     #user-input { flex: 1; min-width: 0; resize: none; border: 0.5px solid #ccc; border-radius: 22px; padding: 9px 16px; font-size: 14px; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; line-height: 1.4; background: #f2f2f7; color: #000; outline: none; height: 38px; overflow-y: auto; }
@@ -132,12 +132,39 @@
     if (el) el.remove();
   }
 
-  function showYesNo() {
-    ynChipsEl.style.display = 'flex';
-  }
+  function showYesNo() { ynChipsEl.style.display = 'flex'; }
+  function hideYesNo() { ynChipsEl.style.display = 'none'; }
 
-  function hideYesNo() {
-    ynChipsEl.style.display = 'none';
+  // Handle the email submission locally — never send to the AI
+  function handleEmailCapture(email) {
+    emailCaptured = true;
+    capturedEmailAddress = email;
+    inputEl.placeholder = 'How can I be of service...';
+
+    // Add the email exchange to history so the AI has context
+    history.push({ role: 'user', content: email });
+    history.push({ role: 'assistant', content: "Got your ticket open! What can I help you with today?" });
+
+    addMessage('user', email);
+    showTyping();
+    setTimeout(() => {
+      removeTyping();
+      addMessage('bot', "Got your ticket open! What can I help you with today?");
+    }, 900);
+
+    // Fire notification to Chad
+    fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: history,
+        isFirstMessage: true,
+        emailCaptured: true,
+        capturedEmailAddress: email,
+        summaryOffered: false,
+        saidYesToSummary: false
+      })
+    }).catch(() => {});
   }
 
   function answerSummary(yes) {
@@ -152,16 +179,19 @@
     chipsEl.style.display = 'none';
     issueSent = true;
 
-    // "Can't access email" — if email already captured, ask if it's that email
-    if (type === 'email' && emailCaptured && capturedEmailAddress) {
-      showTyping();
-      setTimeout(() => {
-        removeTyping();
-        const msg = `Is the issue with ${capturedEmailAddress}?`;
-        addMessage('bot', msg);
-        history.push({ role: 'assistant', content: msg });
-      }, 1200);
-      return;
+    // "Can't access email" chip — if email already on file, ask if it's that one
+    if (type === 'email') {
+      if (emailCaptured && capturedEmailAddress) {
+        showTyping();
+        setTimeout(() => {
+          removeTyping();
+          const msg = `Is the issue with ${capturedEmailAddress}?`;
+          addMessage('bot', msg);
+          history.push({ role: 'assistant', content: msg });
+        }, 1200);
+        return;
+      }
+      // No email on file yet — fall through and let the AI ask
     }
 
     inputEl.value = el.textContent;
@@ -188,7 +218,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: history,
-          isFirstMessage: history.length === 1,
+          isFirstMessage: false,
           emailCaptured,
           capturedEmailAddress,
           summaryOffered,
@@ -202,32 +232,13 @@
         .replace(/EMAIL_CAPTURED:\[?[^\]\n]+\]?\n?/g, '')
         .trim();
 
-      // Update email state if just captured
-      if (rawReply.match(/EMAIL_CAPTURED:/)) {
-        emailCaptured = true;
-        const match = rawReply.match(/EMAIL_CAPTURED:\[?([^\]\n]+)\]?/);
-        if (match) capturedEmailAddress = match[1].trim();
-        inputEl.placeholder = 'How can I be of service...';
-      }
-      if (rawReply.includes('EMAIL_CAPTURED_NOEMAIL')) {
-        emailCaptured = true;
-        const match = rawReply.match(/EMAIL_CAPTURED_NOEMAIL:\[?([^\]\n]+)\]?/);
-        if (match) capturedEmailAddress = match[1].trim();
-      }
-
-      // Track if summary has been offered
-      if (data.summaryOffered) {
-        summaryOffered = true;
-      }
+      if (data.summaryOffered) summaryOffered = true;
 
       history.push({ role: 'assistant', content: reply });
       removeTyping();
       addMessage('bot', reply);
 
-      // Show yes/no buttons if backend says to
-      if (data.showYesNo) {
-        showYesNo();
-      }
+      if (data.showYesNo) showYesNo();
 
     } catch(e) {
       removeTyping();
@@ -241,7 +252,15 @@
     const text = inputEl.value.trim();
     if (!text || loading) return;
 
-    if (emailCaptured && !issueSent) {
+    // ---- INTERCEPT: first thing sent is always the email ----
+    if (!emailCaptured) {
+      inputEl.value = '';
+      handleEmailCapture(text);
+      return;
+    }
+    // --------------------------------------------------------
+
+    if (!issueSent) {
       chipsEl.style.display = 'none';
       issueSent = true;
     }
